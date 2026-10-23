@@ -4,34 +4,50 @@ declare(strict_types=1);
 namespace InaPostaje;
 
 /**
- * Fuel names as INA writes them ("Eurosuper 95 Class Plus", "Eurodiesel plavi", "Autoplin") →
- * a small set of categories the public site can filter, compare and sort by.
- * Mirrored by nothing in JS: the category is computed here and published with each fuel.
+ * INA's fuel products. Each fuel name read from ina.hr ("Eurosuper 95 Class Plus", "Eurodiesel plavi" …)
+ * is mapped to one of these, so the public site can filter, compare and sort by product.
+ * Anything else a station lists (AdBlue, …) stays on its card under 'other'.
  */
 final class Fuels
 {
-    /** Display order on the site. */
+    /** The official product names, in display order. */
     public const CATEGORIES = [
-        'es95'   => 'Benzin 95',
-        'es100'  => 'Benzin 100',
-        'ed'     => 'Dizel',
-        'edp'    => 'Premium dizel',
-        'plavi'  => 'Plavi dizel',
-        'lpg'    => 'Autoplin',
-        'hvo'    => 'HVO',
-        'adblue' => 'AdBlue',
-        'other'  => 'Ostalo',
+        'es95cp'   => 'Eurosuper 95 Class Plus',
+        'es95'     => 'Eurosuper 95',
+        'es95cpp'  => 'Eurosuper 95 Class Plus Premium',
+        'es100cpp' => 'Eurosuper 100 Class Plus Premium',
+        'edcp'     => 'Eurodiesel Class Plus',
+        'ed'       => 'Eurodiesel',
+        'edcpp'    => 'Eurodiesel Class Plus Premium',
+        'lpg'      => 'Autoplin',
+        'plavi'    => 'Eurodiesel plavi',
+        'edcpe'    => 'Eurodiesel Class Plus Expert',
+        'other'    => 'Ostalo',
     ];
 
+    /**
+     * Exact product name first (case and spacing ignored); otherwise the closest product by its parts,
+     * so small differences in how ina.hr writes a name ("EUROSUPER 95 CLASS PLUS", "Eurosuper 100 Class Plus",
+     * "Plavi dizel", "UNP") still land on the right product.
+     */
     public static function category(string $name): string
     {
-        $n = mb_strtolower($name, 'UTF-8');
+        $n = trim(preg_replace('/\s+/u', ' ', mb_strtolower($name, 'UTF-8')), " \t.,;:-");
+        foreach (self::CATEGORIES as $cat => $label) {
+            if ($n === mb_strtolower($label, 'UTF-8')) return $cat;
+        }
         if (preg_match('/plav/u', $n)) return 'plavi';
-        if (preg_match('/ad\s*blue/u', $n)) return 'adblue';
         if (preg_match('/autoplin|\bunp\b|\blpg\b/u', $n)) return 'lpg';
-        if (preg_match('/\bhvo\b/u', $n)) return 'hvo';
-        if (preg_match('/diesel|dizel/u', $n)) return preg_match('/premium|\b100\b|v-?power|ultimate/u', $n) ? 'edp' : 'ed';
-        if (preg_match('/super|benzin|\bbmb\b/u', $n)) return preg_match('/\b(100|98)\b|premium|v-?power/u', $n) ? 'es100' : 'es95';
+        $classPlus = (bool) preg_match('/class\s*plus/u', $n);
+        $premium = str_contains($n, 'premium');
+        if (preg_match('/diesel|dizel/u', $n)) {
+            if (str_contains($n, 'expert')) return 'edcpe';
+            return $premium ? 'edcpp' : ($classPlus ? 'edcp' : 'ed');
+        }
+        if (preg_match('/super|benzin|\bbmb\b/u', $n)) {
+            if (preg_match('/\b100\b/u', $n)) return 'es100cpp';
+            return $premium ? 'es95cpp' : ($classPlus ? 'es95cp' : 'es95');
+        }
         return 'other';
     }
 
@@ -48,7 +64,7 @@ final class Fuels
         return $p >= 0.3 && $p <= 5 ? number_format($p, 2, '.', '') : null;
     }
 
-    /** Sorts fuels in category order, then by name. */
+    /** Sorts fuels in product order, then by name. */
     public static function sort(array &$fuels): void
     {
         $order = array_flip(array_keys(self::CATEGORIES));

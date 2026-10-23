@@ -8,7 +8,7 @@ final class Config
     private static array $values = [];
 
     private const DEFAULTS = [
-        'admin_path' => '/urednik/',
+        'admin_path' => '/customer-gas-updater/',
         'totp_issuer' => 'INA postaje CMS',
         'allow_web_enrollment' => true,
         'session_idle_seconds' => 1800,

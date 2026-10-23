@@ -1,4 +1,4 @@
-/* Admin-only styles (urednik/); builds on /assets/css/site.css tokens. */
+/* Admin-only styles (customer-gas-updater/); builds on /assets/css/site.css tokens. */
 .admin-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
 .admin-title { font-size: 1.875rem; margin: 0; }
 .admin-top-actions { display: flex; gap: .5rem; align-items: center; }

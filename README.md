@@ -19,7 +19,7 @@ A searchable list of **all INA petrol stations in Croatia**: working hours, whic
   assets/css/site.css         ← light-dark() colour tokens (WCAG AA checked in both themes)
   assets/js/theme-init.js     ← applies a saved light/dark choice before the first paint
   assets/js/site.js, hours.js ← theme toggle, search/filters/sorting, "Sada radi"
-  urednik/                    ← hidden admin: index.php (login → 2FA → editor), api.php, assets/
+  customer-gas-updater/       ← hidden admin: index.php (login → 2FA → editor), api.php, assets/
   app/src/                    ← InaSource (ina.hr parsers), InaSync, Stations, Render, Fuels, Auth, Totp…
   app/templates/              ← page templates
   sql/  bin/  deploy/  tests/
@@ -27,7 +27,9 @@ A searchable list of **all INA petrol stations in Croatia**: working hours, whic
 
 ## What the public page shows
 
-* **Cijene goriva** – one tile per fuel type (Benzin 95/100, Dizel, Premium dizel, Plavi dizel, Autoplin, HVO, AdBlue):
+* **Cijene goriva** – one tile per INA product: Eurosuper 95 Class Plus, Eurosuper 95, Eurosuper 95 Class Plus Premium,
+  Eurosuper 100 Class Plus Premium, Eurodiesel Class Plus, Eurodiesel, Eurodiesel Class Plus Premium, Autoplin,
+  Eurodiesel plavi, Eurodiesel Class Plus Expert (the list and order live in `Fuels::CATEGORIES`). Each shows
   the most common price on INA stations, the range and how many stations sell it. For a week after ina.hr changes a
   price it says **NOVA CIJENA od … – prije … (pojeftinjenje −0,04 €)**.
 * **Filters**: free text (place, name, address, phone, fuel, service, nickname), county, fuel type, service,
@@ -89,7 +91,7 @@ Stations still listed on ina.hr can only be hidden, not deleted (the sync would 
    **whitelist**: only the generated pages, `data/stations.json`, assets, icons and the two admin PHP files are
    served; `app/`, `sql/`, `bin/`, `var/`, `.git`, backups… are all 404. Pages are `no-cache` + ETag, CSS/JS
    are content-hashed and cached for a year, `.gz` copies are served by `gzip_static`.
-4. Open `https://<domain>/urednik/`, log in, scan the QR code, save the 8 recovery codes.
+4. Open `https://<domain>/customer-gas-updater/`, log in, scan the QR code, save the 8 recovery codes.
 5. **Cron** (`php` = the site's PHP version):
    ```
    * 0,4 * * *  php /path/to/bin/sync-ina.php     # each minute of 00:xx and 04:xx: 1/60 of the stations → two full rounds a day
@@ -100,7 +102,7 @@ Stations still listed on ina.hr can only be hidden, not deleted (the sync would 
 **Updating later:** `git pull && php bin/upgrade.php`. Generated files are git-ignored, so pulls never conflict.
 
 **Behind Bunny CDN?** Same as the previous project: "Respect Origin Cache-Control", don't strip cookies, an edge
-rule that never caches `/urednik*`, optionally the origin-lock block in the vhost, and the `bunny` API key in
+rule that never caches `/customer-gas-updater*`, optionally the origin-lock block in the vhost, and the `bunny` API key in
 `app/config.php` for an automatic purge after every publish (`php bin/bunny-purge.php` by hand).
 
 ## Admin security
@@ -125,8 +127,8 @@ Origin check · strict CSP without inline scripts · audit log (**Dnevnik**) of 
 ```
 cp app/config.example.php app/config.php   # dsn: 'sqlite:' . __DIR__ . '/../var/ina-postaje.sqlite', app_key
 mkdir -p var && php bin/install.php        # add --no-sync without internet access
-php -S 127.0.0.1:8000 -t . bin/dev-router.php   # same whitelist as production; admin at /urednik/
-php tests/run.php            # 36 tests: TOTP, crypto, ina.hr parsers, sync (add/flag/prices/closures/locks), rendering, import
+php -S 127.0.0.1:8000 -t . bin/dev-router.php   # same whitelist as production; admin at /customer-gas-updater/
+php tests/run.php            # 37 tests: TOTP, crypto, ina.hr parsers, sync (add/flag/prices/closures/locks), rendering, import
 node tests/hours.test.js     # 18 tests: "Sada radi" – formats, overnight, non-stop, holidays
 node tests/contrast.test.js  # 46 checks: WCAG AA contrast of every token pair, light + dark
 ```

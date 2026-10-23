@@ -58,6 +58,12 @@ final class Stations
             $row[$f] = is_array($v) ? $v : [];
         }
         foreach ([...self::FLAGS, 'ina_missing'] as $f) $row[$f] = (int) ($row[$f] ?? 0);
+        // The product is derived from the name every time, so a change to Fuels::CATEGORIES
+        // applies to stored fuels at once, without waiting for the next sync.
+        $row['fuels'] = array_values(array_filter($row['fuels'], fn($f) => is_array($f) && isset($f['name'])));
+        foreach ($row['fuels'] as &$fuel) $fuel['cat'] = Fuels::category((string) $fuel['name']);
+        unset($fuel);
+        Fuels::sort($row['fuels']);
         return $row;
     }
 
@@ -180,7 +186,7 @@ final class Stations
     /**
      * What a visitor should see on $today (YYYY-MM-DD): 'open', 'closed' or 'upcoming'
      * (closure announced for a later date). An expired closure counts as open again.
-     * Mirrored in assets/js/site.js and urednik/assets/admin.js.
+     * Mirrored in assets/js/site.js and customer-gas-updater/assets/admin.js.
      */
     public static function closureState(array $s, string $today): string
     {

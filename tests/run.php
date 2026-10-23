@@ -38,7 +38,7 @@ $hoursTable = fn(string $week = '06-22', string $sat = '07-21', string $sun = '0
     => '<table class="station__info__tablebox__table"><tr><th>Radno vrijeme</th><th>Radni dan</th><th>Subota</th><th>Nedjelja</th><th>Blagdani</th></tr>'
     . "<tr><td>Redovno</td><td>$week</td><td>$sat</td><td>$sun</td><td>$hol</td></tr></table>";
 $fuelList = fn(array $fuels) => '<h3>Goriva u ponudi</h3><ul>' . implode('', array_map(fn($f) => "<li>$f</li>", $fuels)) . '</ul>';
-$defaultFuels = ['Eurosuper 95 Class Plus - 1,73 €', 'Eurosuper 100 Class Plus - 1,89 €', 'Eurodiesel Class Plus - 1,67 €',
+$defaultFuels = ['Eurosuper 95 Class Plus - 1,73 €', 'Eurosuper 100 Class Plus Premium - 1,89 €', 'Eurodiesel Class Plus - 1,67 €',
     'Eurodiesel Class Plus Premium - 1,85 €', 'Autoplin - 0,89 €', 'AdBlue'];
 $services = '<h3>Usluge</h3><ul><li>Caffe bar</li><li>Autopraonica</li><li><img src="x.svg" alt="Bankomat"></li><li>Wi-Fi</li></ul>';
 $page = fn(string $hours, string $fuels, string $extra = '') => "<html><body>$nav<main><h1>Murter</h1>"
@@ -80,10 +80,18 @@ test('AES-256-GCM round trip and tamper detection', function () {
 
 echo "Fuel names → categories\n";
 test('INA fuel names map to the site\'s categories', function () {
-    $cases = ['Eurosuper 95 Class Plus' => 'es95', 'Eurosuper 100 Class Plus' => 'es100', 'Eurodiesel Class Plus' => 'ed',
-        'Eurodiesel Class Plus Premium' => 'edp', 'Eurodiesel plavi' => 'plavi', 'Plava nafta' => 'plavi', 'Autoplin' => 'lpg',
-        'UNP (autoplin)' => 'lpg', 'AdBlue' => 'adblue', 'Ad Blue' => 'adblue', 'HVO 100' => 'hvo', 'Petrolej' => 'other'];
+    // INA's own product names map to themselves …
+    foreach (Fuels::CATEGORIES as $cat => $label) if ($cat !== 'other') eq([$label, $cat], [$label, Fuels::category($label)]);
+    // … and spellings that differ a little still find the right product.
+    $cases = ['  EUROSUPER 95 class plus ' => 'es95cp', 'Eurosuper 95 Class Plus Premium' => 'es95cpp', 'Eurosuper 100 Class Plus' => 'es100cpp',
+        'Eurosuper 95,' => 'es95', 'Eurodiesel Class Plus Expert' => 'edcpe', 'Eurodiesel Class Plus Premium' => 'edcpp', 'Eurodiesel' => 'ed',
+        'Plavi dizel' => 'plavi', 'UNP (autoplin)' => 'lpg', 'AdBlue' => 'other', 'Petrolej' => 'other'];
     foreach ($cases as $name => $cat) eq([$name, $cat], [$name, Fuels::category($name)]);
+});
+test('fuels stored with an older product key are re-classified (and ordered) when loaded', function () {
+    $s = Stations::hydrate(['id' => '1', 'fuels' => json_encode([['name' => 'Autoplin', 'cat' => 'lpg', 'price' => '0.89'],
+        ['name' => 'Eurosuper 95 Class Plus Premium', 'cat' => 'es100', 'price' => '1.95'], 'junk'])]);
+    eq(['Eurosuper 95 Class Plus Premium|es95cpp', 'Autoplin|lpg'], array_map(fn($f) => "{$f['name']}|{$f['cat']}", $s['fuels']));
 });
 test('prices: comma or dot, 2–3 decimals; unbelievable values are refused', function () {
     eq('1.43', Fuels::price('1,43 €'));
@@ -126,8 +134,8 @@ test('working hours table (with <br> in the holiday cell)', function () use ($mu
 });
 test('"Goriva u ponudi": every item with its price and category; the site menu "Goriva" is ignored', function () use ($murterPage) {
     $f = InaSource::parseFuels($murterPage());
-    eq(['Eurosuper 95 Class Plus|es95|1.73', 'Eurosuper 100 Class Plus|es100|1.89', 'Eurodiesel Class Plus|ed|1.67',
-        'Eurodiesel Class Plus Premium|edp|1.85', 'Autoplin|lpg|0.89', 'AdBlue|adblue|'],
+    eq(['Eurosuper 95 Class Plus|es95cp|1.73', 'Eurosuper 100 Class Plus Premium|es100cpp|1.89', 'Eurodiesel Class Plus|edcp|1.67',
+        'Eurodiesel Class Plus Premium|edcpp|1.85', 'Autoplin|lpg|0.89', 'AdBlue|other|'],
         array_map(fn($x) => "{$x['name']}|{$x['cat']}|{$x['price']}", $f));
 });
 test('without the heading only "<fuel> – <price> €" lines count', function () {
@@ -213,7 +221,7 @@ test('station page: hours, fuels with prices, services and coordinates are store
     eq(true, $m['ina_synced_at'] !== '');
     $html = (string) file_get_contents(Config::get('web_root') . '/index.html');
     has('<span class="fuel-name">Eurodiesel Class Plus</span> <b class="fuel-price">1,67 €</b>', $html);
-    has('data-fuels="es95 es100 ed edp lpg adblue"', $html);
+    has('data-fuels="es95cp es100cpp edcp edcpp lpg other"', $html);
 });
 test('price change: previous price + date on the fuel, price_history row and Dnevnik; the first pick-up is not a change', function () use ($serve, $murterPage, $murter) {
     eq(0, (int) Db::one('SELECT COUNT(*) AS n FROM price_history')['n']);
@@ -227,7 +235,7 @@ test('price change: previous price + date on the fuel, price_history row and Dne
     eq(false, isset($f['AdBlue']));     // no longer listed → dropped
     eq('1.10', $f['Eurodiesel plavi']['price']);
     $h = Db::one('SELECT * FROM price_history');
-    eq(['Eurosuper 95 Class Plus', 'es95', '1.73', '1.69'], [$h['fuel_name'], $h['category'], $h['old_price'], $h['new_price']]);
+    eq(['Eurosuper 95 Class Plus', 'es95cp', '1.73', '1.69'], [$h['fuel_name'], $h['category'], $h['old_price'], $h['new_price']]);
     eq(1, (int) Db::one("SELECT COUNT(*) AS n FROM audit_log WHERE action = 'price'")['n']);
 });
 test('a page that cannot be read keeps everything; the log says what was tried', function () use ($serve, $murter) {
@@ -319,7 +327,7 @@ test('card: one call button per number, cheapest price per type for sorting, coo
     $c = Render::card($row([$fuel('Eurodiesel Class Plus', '1.67'), $fuel('Eurodiesel Class Plus Premium', '1.85'), $fuel('Eurosuper 95', '1.73')], ['lat' => '45.800000', 'lng' => '15.900000']));
     has('href="tel:012345678"', $c);
     has('href="tel:0911112222"', $c);
-    has('data-prices="{&quot;ed&quot;:1.67,&quot;edp&quot;:1.85,&quot;es95&quot;:1.73}"', $c);
+    has('data-prices="{&quot;edcp&quot;:1.67,&quot;edcpp&quot;:1.85,&quot;es95&quot;:1.73}"', $c);
     has('query=45.800000%2C15.900000', $c);
     has('Cijene s ina.hr, 20. 10. 2026.', $c);
 });
@@ -331,7 +339,7 @@ test('price overview: most common price per type, range, station count, "Nova ci
     $rows = [$row([$fuel('Eurosuper 95 Class Plus', '1.69', '1.73', '2026-10-21 00:20:00'), $fuel('Autoplin', '0.89')]),
         $row([$fuel('Eurosuper 95 Class Plus', '1.69', '1.73', '2026-10-21 00:40:00')]), $row([$fuel('Eurosuper 95 Class Plus', '1.79')])];
     $o = Render::priceOverview($rows, '2026-10-23 10:00:00');
-    has('<h3 class="price-name">Benzin 95</h3><p class="price-value"><span class="nw">1,69 € <span class="price-unit">/ l</span></span></p>', $o);
+    has('<h3 class="price-name">Eurosuper 95 Class Plus</h3><p class="price-value"><span class="nw">1,69 € <span class="price-unit">/ l</span></span></p>', $o);
     has('najčešća cijena · raspon 1,69 € – 1,79 € · postaja: 3', $o);
     has('<span class="price-flag">Nova cijena</span> od 21. 10. 2026., prije 1,73 € (pojeftinjenje −0,04 €)', $o);
     has('ista na svim postajama · postaja: 1', $o);
@@ -345,7 +353,7 @@ test('published index.html has every placeholder filled, filters with counts, an
     Stations::publish();
     $html = (string) file_get_contents(Config::get('web_root') . '/index.html');
     eq(false, (bool) preg_match('/\{\{[A-Z_]+\}\}/', $html));
-    has('<option value="es95">Benzin 95 (', $html);
+    has('<option value="es95cp">Eurosuper 95 Class Plus (', $html);
     has('<option value="caffe bar">Caffe bar (1)</option>', $html);
     has('<option value="blizina">Najbliže meni</option>', $html);
     eq(true, strpos($html, 'name="color-scheme"') < strpos($html, 'theme-init.js'));

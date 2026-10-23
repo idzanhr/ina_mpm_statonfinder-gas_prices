@@ -21,8 +21,8 @@ return [
     // pages and data/stations.json (+ .gz copies) here on every save and sync.
     'web_root' => dirname(__DIR__),
 
-    // URL path of the hidden admin (must match the urednik/ folder name and the vhost).
-    'admin_path' => '/urednik/',
+    // URL path of the hidden admin (must match the customer-gas-updater/ folder name and the vhost).
+    'admin_path' => '/customer-gas-updater/',
 
     // Name shown in the authenticator app.
     'totp_issuer' => 'INA postaje CMS',

@@ -18,12 +18,12 @@ $notFound = function () use ($root): bool {
 
 if ($path === '/') $path = '/index.html';
 if (preg_match('#^/(privatnost|kolacici|index|404)$#', $path)) $path .= '.html';
-if ($path === '/urednik') { header('Location: /urednik/', true, 301); return true; }
+if ($path === '/customer-gas-updater') { header('Location: /customer-gas-updater/', true, 301); return true; }
 
-if ($path === '/urednik/' || preg_match('#^/urednik/(index|api)\.php$#', $path)) {
-    $script = $path === '/urednik/' ? '/urednik/index.php' : $path;
+if ($path === '/customer-gas-updater/' || preg_match('#^/customer-gas-updater/(index|api)\.php$#', $path)) {
+    $script = $path === '/customer-gas-updater/' ? '/customer-gas-updater/index.php' : $path;
     $_SERVER['SCRIPT_NAME'] = $script;
-    chdir("$root/urednik");
+    chdir("$root/customer-gas-updater");
     require "$root$script";
     return true;
 }
@@ -31,7 +31,7 @@ if ($path === '/urednik/' || preg_match('#^/urednik/(index|api)\.php$#', $path))
 $allowed = preg_match('#^/(?:index|privatnost|kolacici|404)\.html$#', $path)
     || in_array($path, ['/data/stations.json', '/robots.txt', '/favicon.svg', '/favicon.png', '/apple-touch-icon.png'], true)
     || preg_match('#^/assets/(?:css|js)/[\w.-]+\.(?:css|js)$#', $path)
-    || preg_match('#^/urednik/assets/[\w.-]+\.(?:css|js)$#', $path);
+    || preg_match('#^/customer-gas-updater/assets/[\w.-]+\.(?:css|js)$#', $path);
 
 if (!$allowed || !is_file($root . $path)) return $notFound();
 if (str_ends_with($path, '.html')) {

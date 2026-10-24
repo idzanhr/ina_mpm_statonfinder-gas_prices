@@ -51,13 +51,13 @@ return [
     'ina_delay_ms' => 300,
     'ina_user_agent' => 'ina-postaje-cms/1.0',
 
-    // Bunny CDN (optional): with an API key every publish clears Bunny's cache for the site.
+    // Bunny CDN (README, "Bunny CDN" step 10): with an API key every publish clears Bunny's cache.
     'bunny' => [
-        'api_key'     => '',
-        'pullzone_id' => '',
-        'site_url'    => '',
+        'api_key'     => '',   // Bunny → Account → API (account key, not a pull-zone password)
+        'pullzone_id' => '',   // number in the pull zone's URL; used by bin/bunny-purge.php --zone
+        'site_url'    => 'https://lokator-benzinskih.crodesign93.eu',
     ],
 
-    // true only behind a proxy that does NOT put the real visitor IP in REMOTE_ADDR itself.
+    // Keep false behind Bunny: nginx already puts the real visitor IP in REMOTE_ADDR (vhost BUNNY block).
     'trust_proxy' => false,
 ];

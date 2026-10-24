@@ -355,15 +355,17 @@ test('more than six services: the rest behind "+ još N"', function () use ($row
     $c = Render::card($row([], ['services' => ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']]));
     has('<summary>+ još 2</summary>', $c);
 });
-test('price overview: most common price per type, range, station count, "Nova cijena" for a week', function () use ($row, $fuel) {
-    $rows = [$row([$fuel('Eurosuper 95 Class Plus', '1.69', '1.73', '2026-10-21 00:20:00'), $fuel('Autoplin', '0.89')]),
-        $row([$fuel('Eurosuper 95 Class Plus', '1.69', '1.73', '2026-10-21 00:40:00')]), $row([$fuel('Eurosuper 95 Class Plus', '1.79')])];
-    $o = Render::priceOverview($rows, '2026-10-23 10:00:00');
-    has('<h3 class="price-name">Eurosuper 95 Class Plus</h3><p class="price-value"><span class="nw">1,69 € <span class="price-unit">/ l</span></span></p>', $o);
-    has('najčešća cijena · raspon 1,69 € – 1,79 € · postaja: 3', $o);
-    has('<span class="price-flag">Nova cijena</span> od 21. 10. 2026., prije 1,73 € (pojeftinjenje −0,04 €)', $o);
-    has('ista na svim postajama · postaja: 1', $o);
-    eq(false, str_contains(Render::priceOverview($rows, '2026-11-05 10:00:00'), 'price-flag'));
+test('price overview: lowest and highest price per fuel with the refresh date; one price when all agree', function () use ($row, $fuel) {
+    $es = fn(string $p, string $at = '2026-10-24 04:12:00') => $row([$fuel('Eurosuper 95 Class Plus', $p)], ['ina_synced_at' => $at]);
+    $rows = [$es('1.69'), $es('1.69', '2026-10-23 04:00:00'), $es('1.85'), $es('1.92'), // motorway prices differ station to station
+        $row([$fuel('Autoplin', '0.89')], ['ina_synced_at' => '2026-10-24 00:30:00']), $row([$fuel('Autoplin', '0.89')]),
+        $row([$fuel('AdBlue', '0.99')])];
+    $o = Render::priceOverview($rows);
+    has('<h3 class="price-name">Eurosuper 95 Class Plus</h3><p class="price-value"><span class="nw">1,69 €</span> – <span class="nw">1,92 € <span class="price-unit">/ l</span></span></p>'
+        . '<p class="price-meta">najniža – najviša · 24. 10. 2026.</p>', $o);
+    has('<h3 class="price-name">Autoplin</h3><p class="price-value"><span class="nw">0,89 € <span class="price-unit">/ l</span></span></p><p class="price-meta">ista na svim postajama · 24. 10. 2026.</p>', $o);
+    has('Preuzeto s ina.hr 24. 10. 2026. u 04:12', $o);
+    eq(false, str_contains($o, 'AdBlue'));
     eq('', Render::priceOverview([$row([])]));
 });
 test('map link without coordinates searches INA + name + address', function () {

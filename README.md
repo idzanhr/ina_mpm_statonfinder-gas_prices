@@ -30,8 +30,9 @@ A searchable list of **all INA petrol stations in Croatia**: working hours, whic
 * **Cijene goriva** – one tile per INA product: Eurosuper 95 Class Plus, Eurosuper 95, Eurosuper 95 Class Plus Premium,
   Eurosuper 100 Class Plus Premium, Eurodiesel Class Plus, Eurodiesel, Eurodiesel Class Plus Premium, Autoplin,
   Eurodiesel plavi, Eurodiesel Class Plus Expert (the list and order live in `Fuels::CATEGORIES`). Each shows
-  the most common price on INA stations, the range and how many stations sell it. For a week after ina.hr changes a
-  price it says **NOVA CIJENA od … – prije … (pojeftinjenje −0,04 €)**.
+  the **lowest and highest price** on INA stations at the last refresh from ina.hr (motorway / transit stations are
+  usually the highest), with the date of that refresh; one price when every station charges the same. Each station's
+  own price, with "nova cijena, prije …" for a week after a change, is on its card.
 * **AdBlue**: listed on every station that has it, **always without a price**, and in the fuel filter. A station
   has it if ina.hr lists it (under *Goriva u ponudi*, *Usluge* or *Ostalo*, where ina.hr usually puts "Ad Blue"), or if
   the admin ticked **"Ima AdBlue"**, by hand or through an import (`adblue_have` column). Whether AdBlue can be **dispensed from a pump nozzle** is not on ina.hr, only in the
@@ -199,7 +200,7 @@ mkdir -p var && php bin/install.php        # add --no-sync without internet acce
 php -S 127.0.0.1:8000 -t . bin/dev-router.php   # same whitelist as production; admin at /customer-gas-updater/
 php tests/run.php            # 46 tests: TOTP, crypto, ina.hr parsers, sync (add/flag/prices/closures/locks), rendering, import
 node tests/hours.test.js     # 18 tests: "Sada radi" – formats, overnight, non-stop, holidays
-node tests/contrast.test.js  # 46 checks: WCAG AA contrast of every token pair, light + dark
+node tests/contrast.test.js  # 44 checks: WCAG AA contrast of every token pair, light + dark
 ```
 
 ## Contributors

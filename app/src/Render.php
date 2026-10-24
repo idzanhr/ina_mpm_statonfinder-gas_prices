@@ -82,7 +82,7 @@ final class Render
 
         return strtr($template, [
             '{{SUMMARY}}' => $summary,
-            '{{PRICE_OVERVIEW}}' => self::priceOverview($rows, date('Y-m-d H:i:s', strtotime($generatedAt))),
+            '{{PRICE_OVERVIEW}}' => self::priceOverview($rows),
             '{{CARDS}}' => implode("\n", array_map(fn($s) => self::card($s, $today), $rows)),
             '{{TOTAL}}' => (string) count($rows),
             '{{COUNTY_OPTIONS}}' => $countyOptions,
@@ -103,76 +103,55 @@ final class Render
         return number_format((float) $price, 2, ',', '.') . ' €';
     }
 
-    /** "−0,04 €" / "+0,04 €" */
-    private static function signed(float $d): string
-    {
-        return ($d < 0 ? '−' : '+') . number_format(abs($d), 2, ',', '.') . ' €';
-    }
-
-    /** Most common value (ties: the lower price). */
-    private static function mode(array $values): string
-    {
-        $counts = array_count_values($values);
-        uksort($counts, fn($a, $b) => $counts[$b] <=> $counts[$a] ?: (float) $a <=> (float) $b);
-        return (string) array_key_first($counts);
-    }
-
     private static function isNew(string $changedAt, string $now): bool
     {
         return $changedAt !== '' && strtotime($now) - strtotime($changedAt) <= self::NEW_PRICE_DAYS * 86400;
     }
 
     /**
-     * One tile per fuel type: the most common price on INA stations (INA's prices are mostly the
-     * same everywhere; motorways differ), the range and how many stations list it. For a week after
-     * a change it says "Nova cijena" with the previous price. Only prices published on ina.hr.
+     * One tile per fuel: the lowest and the highest price on INA stations at the last refresh from ina.hr
+     * (motorway / transit stations are usually the highest), with the date of that refresh; one price when every
+     * station charges the same. Each station's own price is on its card. Only prices published on ina.hr;
+     * AdBlue is never priced.
      */
-    public static function priceOverview(array $rows, ?string $now = null): string
+    public static function priceOverview(array $rows): string
     {
-        $now ??= date('Y-m-d H:i:s');
         $byCat = [];
         $latest = '';
         foreach ($rows as $s) {
-            $seen = [];
+            $at = (string) ($s['ina_synced_at'] ?? '');
             foreach ($s['fuels'] as $f) {
                 if (($f['price'] ?? '') === '' || !Fuels::priced($f['cat'])) continue;
-                // One price per station and type (the cheapest, if a station lists two of a kind).
-                if (isset($seen[$f['cat']]) && (float) $seen[$f['cat']]['price'] <= (float) $f['price']) continue;
-                $seen[$f['cat']] = $f;
+                $byCat[$f['cat']][] = ['price' => (float) $f['price'], 'at' => $at];
+                if ($at > $latest) $latest = $at;
             }
-            foreach ($seen as $cat => $f) $byCat[$cat][] = $f;
-            if ($seen && ($s['ina_synced_at'] ?? '') > $latest) $latest = $s['ina_synced_at'];
         }
         if (!$byCat) return '';
 
+        $unit = ' <span class="price-unit">/ l</span>';
         $tiles = '';
         foreach (Fuels::CATEGORIES as $cat => $label) {
             if (empty($byCat[$cat])) continue;
-            $list = $byCat[$cat];
-            $prices = array_map(fn($f) => (float) $f['price'], $list);
-            $mode = self::mode(array_column($list, 'price'));
-            $min = min($prices); $max = max($prices);
-            $range = $min === $max ? 'ista na svim postajama' : 'raspon ' . self::euro((string) $min) . ' – ' . self::euro((string) $max);
-            $change = '';
-            $changed = array_filter($list, fn($f) => $f['price'] === $mode && ($f['prev'] ?? '') !== '' && self::isNew($f['changed_at'] ?? '', $now));
-            if ($changed) {
-                $prev = self::mode(array_column($changed, 'prev'));
-                $at = max(array_column($changed, 'changed_at'));
-                $d = (float) $mode - (float) $prev;
-                $change = '<p class="price-change"><span class="price-flag">Nova cijena</span> od ' . self::e(self::date(substr($at, 0, 10)))
-                    . ', prije ' . self::e(self::euro($prev)) . ' (' . ($d < 0 ? 'pojeftinjenje ' : 'poskupljenje ') . self::e(self::signed($d)) . ')</p>';
-            }
+            $prices = array_column($byCat[$cat], 'price');
+            $min = min($prices);
+            $max = max($prices);
+            $at = max(array_column($byCat[$cat], 'at'));
+            // Each price stays on one line together with its unit (no "/ l" alone on a phone).
+            $value = $min === $max
+                ? '<span class="nw">' . self::e(self::euro((string) $min)) . $unit . '</span>'
+                : '<span class="nw">' . self::e(self::euro((string) $min)) . '</span> – <span class="nw">' . self::e(self::euro((string) $max)) . $unit . '</span>';
             $tiles .= '<article class="price-tile price-' . $cat . '">'
                 . '<h3 class="price-name">' . self::e($label) . '</h3>'
-                . '<p class="price-value"><span class="nw">' . self::e(self::euro($mode)) . ' <span class="price-unit">/ l</span></span></p>'
-                . '<p class="price-meta">najčešća cijena · ' . self::e($range) . ' · postaja: ' . count($list) . '</p>'
-                . $change . '</article>';
+                . '<p class="price-value">' . $value . '</p>'
+                . '<p class="price-meta">' . ($min === $max ? 'ista na svim postajama' : 'najniža – najviša')
+                . ($at !== '' ? ' · ' . self::e(self::date(substr($at, 0, 10))) : '') . '</p>'
+                . '</article>';
         }
         return '<section class="prices" aria-labelledby="prices-title">'
             . '<h2 id="prices-title" class="section-title">Cijene goriva</h2>'
             . '<div class="price-grid">' . $tiles . '</div>'
             . ($latest !== '' ? '<p class="price-meta">Preuzeto s ina.hr ' . self::e(self::date(substr($latest, 0, 10)) . ' u ' . substr($latest, 11, 5))
-                . ' · za točnu cijenu pogledajte karticu postaje</p>' : '')
+                . ' · najviše cijene su obično na autocestama · cijena pojedine postaje je na njezinoj kartici</p>' : '')
             . '</section>';
     }
 

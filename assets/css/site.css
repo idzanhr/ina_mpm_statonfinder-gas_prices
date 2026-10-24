@@ -101,8 +101,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .price-unit { font-size: 1rem; font-weight: 600; }
 .price-meta { margin-top: .25rem; font-size: .875rem; }
 .prices > .price-meta { color: var(--muted-foreground); margin-top: .5rem; }
-.price-change { margin-top: .375rem; font-size: .9375rem; font-weight: 700; }
-.price-flag { display: inline-block; margin-right: .25rem; border-radius: 999px; background: var(--price-fg); color: var(--price-bg); padding: .0625rem .5rem; font-size: .8125rem; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; }
 .nw { white-space: nowrap; }
 
 /* filters */

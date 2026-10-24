@@ -122,10 +122,48 @@ final class Render
         return $changedAt !== '' && strtotime($now) - strtotime($changedAt) <= self::NEW_PRICE_DAYS * 86400;
     }
 
+    /** A motorway price needs at least this many stations, so a single odd price (a marina, an error) is not one. */
+    public const MOTORWAY_MIN_STATIONS = 2;
+
     /**
-     * One tile per fuel type: the most common price on INA stations (INA's prices are mostly the
-     * same everywhere; motorways differ), the range and how many stations list it. For a week after
-     * a change it says "Nova cijena" with the previous price. Only prices published on ina.hr.
+     * The two price levels of one fuel. Stations off the motorways all charge the same price, so the most
+     * common price is the regular one ('base'); motorway / transit stations charge more, so the most common
+     * price above it is the motorway one ('motorway', null when there is none). One-off prices are ignored.
+     * Each level: price, how many stations charge it, and its last change (changed_at, prev) if known.
+     * @param array<array{price: string, prev?: string, changed_at?: string}> $list one entry per station
+     * @return array{base: array, motorway: ?array}
+     */
+    public static function priceTiers(array $list): array
+    {
+        $level = function (string $price) use ($list): array {
+            $at = array_values(array_filter($list, fn($f) => $f['price'] === $price));
+            $changed = array_values(array_filter($at, fn($f) => ($f['prev'] ?? '') !== '' && ($f['changed_at'] ?? '') !== ''));
+            $when = $changed ? max(array_column($changed, 'changed_at')) : '';
+            $prev = $changed ? self::mode(array_column(array_filter($changed, fn($f) => $f['changed_at'] === $when), 'prev')) : '';
+            return ['price' => $price, 'count' => count($at), 'changed_at' => $when, 'prev' => $prev];
+        };
+        $base = self::mode(array_column($list, 'price'));
+        $higher = array_values(array_filter(array_column($list, 'price'), fn($p) => (float) $p > (float) $base));
+        $motorway = $higher ? self::mode($higher) : null;
+        if ($motorway !== null && count(array_keys($higher, $motorway, true)) < self::MOTORWAY_MIN_STATIONS) $motorway = null;
+        return ['base' => $level($base), 'motorway' => $motorway === null ? null : $level($motorway)];
+    }
+
+    /** "od 21. 10. 2026." / "Nova cijena od …, prije … (pojeftinjenje −0,04 €)" for a week after the change. */
+    private static function since(array $level, string $now): string
+    {
+        if ($level['changed_at'] === '') return '';
+        $date = self::e(self::date(substr($level['changed_at'], 0, 10)));
+        if (!self::isNew($level['changed_at'], $now)) return 'od ' . $date;
+        $d = (float) $level['price'] - (float) $level['prev'];
+        return '<span class="price-flag">Nova cijena</span> od ' . $date . ', prije ' . self::e(self::euro($level['prev']))
+            . ' (' . ($d < 0 ? 'pojeftinjenje ' : 'poskupljenje ') . self::e(self::signed($d)) . ')';
+    }
+
+    /**
+     * One tile per fuel: the regular price (izvan autocesta) and the motorway price (autoceste), each with the
+     * date it took effect; "Nova cijena" with the previous price for a week after a change. Only prices
+     * published on ina.hr; AdBlue is never priced.
      */
     public static function priceOverview(array $rows, ?string $now = null): string
     {
@@ -145,34 +183,28 @@ final class Render
         }
         if (!$byCat) return '';
 
+        $unit = ' <span class="price-unit">/ l</span>';
         $tiles = '';
         foreach (Fuels::CATEGORIES as $cat => $label) {
             if (empty($byCat[$cat])) continue;
-            $list = $byCat[$cat];
-            $prices = array_map(fn($f) => (float) $f['price'], $list);
-            $mode = self::mode(array_column($list, 'price'));
-            $min = min($prices); $max = max($prices);
-            $range = $min === $max ? 'ista na svim postajama' : 'raspon ' . self::euro((string) $min) . ' – ' . self::euro((string) $max);
-            $change = '';
-            $changed = array_filter($list, fn($f) => $f['price'] === $mode && ($f['prev'] ?? '') !== '' && self::isNew($f['changed_at'] ?? '', $now));
-            if ($changed) {
-                $prev = self::mode(array_column($changed, 'prev'));
-                $at = max(array_column($changed, 'changed_at'));
-                $d = (float) $mode - (float) $prev;
-                $change = '<p class="price-change"><span class="price-flag">Nova cijena</span> od ' . self::e(self::date(substr($at, 0, 10)))
-                    . ', prije ' . self::e(self::euro($prev)) . ' (' . ($d < 0 ? 'pojeftinjenje ' : 'poskupljenje ') . self::e(self::signed($d)) . ')</p>';
-            }
+            ['base' => $base, 'motorway' => $motorway] = self::priceTiers($byCat[$cat]);
+            $baseSince = self::since($base, $now);
             $tiles .= '<article class="price-tile price-' . $cat . '">'
                 . '<h3 class="price-name">' . self::e($label) . '</h3>'
-                . '<p class="price-value"><span class="nw">' . self::e(self::euro($mode)) . ' <span class="price-unit">/ l</span></span></p>'
-                . '<p class="price-meta">najčešća cijena · ' . self::e($range) . ' · postaja: ' . count($list) . '</p>'
-                . $change . '</article>';
+                . '<p class="price-value"><span class="nw">' . self::e(self::euro($base['price'])) . $unit . '</span></p>'
+                . '<p class="price-meta">' . ($motorway ? 'izvan autocesta' : 'sve postaje') . ($baseSince !== '' ? ' · ' . $baseSince : '') . '</p>';
+            if ($motorway) {
+                $since = self::since($motorway, $now);
+                $tiles .= '<p class="price-motorway">Autoceste: <b class="nw">' . self::e(self::euro($motorway['price'])) . $unit . '</b>'
+                    . ($since !== '' ? ' <span class="price-meta">· ' . $since . '</span>' : '') . '</p>';
+            }
+            $tiles .= '</article>';
         }
         return '<section class="prices" aria-labelledby="prices-title">'
             . '<h2 id="prices-title" class="section-title">Cijene goriva</h2>'
             . '<div class="price-grid">' . $tiles . '</div>'
             . ($latest !== '' ? '<p class="price-meta">Preuzeto s ina.hr ' . self::e(self::date(substr($latest, 0, 10)) . ' u ' . substr($latest, 11, 5))
-                . ' · za točnu cijenu pogledajte karticu postaje</p>' : '')
+                . ' · cijena pojedine postaje je na njezinoj kartici</p>' : '')
             . '</section>';
     }
 

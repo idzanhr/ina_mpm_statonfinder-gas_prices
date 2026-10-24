@@ -355,16 +355,28 @@ test('more than six services: the rest behind "+ još N"', function () use ($row
     $c = Render::card($row([], ['services' => ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']]));
     has('<summary>+ još 2</summary>', $c);
 });
-test('price overview: most common price per type, range, station count, "Nova cijena" for a week', function () use ($row, $fuel) {
-    $rows = [$row([$fuel('Eurosuper 95 Class Plus', '1.69', '1.73', '2026-10-21 00:20:00'), $fuel('Autoplin', '0.89')]),
-        $row([$fuel('Eurosuper 95 Class Plus', '1.69', '1.73', '2026-10-21 00:40:00')]), $row([$fuel('Eurosuper 95 Class Plus', '1.79')])];
+test('price overview: regular and motorway price, each with the date it took effect; no range', function () use ($row, $fuel) {
+    $es = fn(string $p, string $prev = '', string $at = '') => $row([$fuel('Eurosuper 95 Class Plus', $p, $prev, $at)]);
+    $rows = [$es('1.69', '1.73', '2026-10-21 00:20:00'), $es('1.69', '1.73', '2026-10-21 00:40:00'), $es('1.69'),
+        $es('1.79', '1.81', '2026-10-14 00:10:00'), $es('1.79', '1.81', '2026-10-14 00:30:00'), // motorway pair
+        $es('1.85'), // one odd price (a marina?) is not a price level
+        $row([$fuel('Autoplin', '0.89')])];
     $o = Render::priceOverview($rows, '2026-10-23 10:00:00');
     has('<h3 class="price-name">Eurosuper 95 Class Plus</h3><p class="price-value"><span class="nw">1,69 € <span class="price-unit">/ l</span></span></p>', $o);
-    has('najčešća cijena · raspon 1,69 € – 1,79 € · postaja: 3', $o);
-    has('<span class="price-flag">Nova cijena</span> od 21. 10. 2026., prije 1,73 € (pojeftinjenje −0,04 €)', $o);
-    has('ista na svim postajama · postaja: 1', $o);
-    eq(false, str_contains(Render::priceOverview($rows, '2026-11-05 10:00:00'), 'price-flag'));
+    has('<p class="price-meta">izvan autocesta · <span class="price-flag">Nova cijena</span> od 21. 10. 2026., prije 1,73 € (pojeftinjenje −0,04 €)</p>', $o);
+    has('<p class="price-motorway">Autoceste: <b class="nw">1,79 € <span class="price-unit">/ l</span></b> <span class="price-meta">· od 14. 10. 2026.</span></p>', $o);
+    has('<p class="price-meta">sve postaje</p>', $o); // Autoplin: one price, never changed
+    eq(false, str_contains($o, 'raspon'));
+    eq(false, str_contains($o, '1,85'));
+    $later = Render::priceOverview($rows, '2026-11-05 10:00:00');
+    eq(false, str_contains($later, 'price-flag'));
+    has('izvan autocesta · od 21. 10. 2026.', $later);
     eq('', Render::priceOverview([$row([])]));
+});
+test('price levels: motorway needs two stations; a cheaper one-off is not a level', function () {
+    $p = fn(array $prices) => Render::priceTiers(array_map(fn($x) => ['price' => $x], $prices));
+    eq(['1.69', null], (fn($t) => [$t['base']['price'], $t['motorway']])($p(['1.69', '1.69', '1.79'])));
+    eq(['1.69', '1.79', 2], (fn($t) => [$t['base']['price'], $t['motorway']['price'], $t['motorway']['count']])($p(['1.69', '1.69', '1.69', '1.79', '1.79', '1.59'])));
 });
 test('map link without coordinates searches INA + name + address', function () {
     eq('https://www.google.com/maps/search/?api=1&query=INA%20%C4%8Cazma%2C%20Hrvatska', Render::mapUrl(['name' => 'Čazma', 'address' => '', 'postal_code' => '', 'city' => '', 'lat' => '', 'lng' => '']));

@@ -63,7 +63,6 @@ const PAIRS = [
   ["shut-fg", "shut-bg", 4.5, "'Sada ne radi' bubble"],
   ["unknown-fg", "unknown-bg", 4.5, "'Provjerite radno vrijeme' bubble"],
   ["price-fg", "price-bg", 4.5, "price tiles, highlighted fuel row"],
-  ["price-bg", "price-fg", 4.5, "'Nova cijena' flag (inverted)"],
   ["price-accent", "price-bg", 3, "price tile border, fuel highlight (1.4.11)"],
   ["input", "card", 3, "input / select / button border (1.4.11)"],
   ["input", "background", 3, "input border on page (1.4.11)"],

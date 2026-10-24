@@ -19,6 +19,8 @@ final class InaSync
     /** Fewer entries than this = a broken finder page; nothing is flagged as missing then. */
     public const MIN_DIRECTORY = 20;
     private const DETAIL_FIELDS = ['name', 'address', 'city', 'postal_code', 'phone', 'lat', 'lng'];
+    /** Filled from ina.hr only while empty: the admin keeps these checked (Uvoz / izvoz), the sync never overwrites them. */
+    private const FILL_ONLY = ['address', 'city', 'postal_code'];
 
     public static function dailyBatch(array $rows, int $minute): array
     {
@@ -119,8 +121,9 @@ final class InaSync
             $set = [];
             if ($s['ina_url'] !== $d['url']) $set['ina_url'] = $d['url'];
             foreach (self::DETAIL_FIELDS as $f) {
-                // Locked stations keep what the admin wrote; empty fields are always filled.
-                if ($d[$f] !== '' && $d[$f] !== $s[$f] && (!$s['locked'] || $s[$f] === '')) $set[$f] = $d[$f];
+                // Locked stations keep what the admin wrote; empty fields are always filled; addresses only ever filled.
+                $keep = $s['locked'] || in_array($f, self::FILL_ONLY, true);
+                if ($d[$f] !== '' && $d[$f] !== $s[$f] && (!$keep || $s[$f] === '')) $set[$f] = $d[$f];
             }
             if ($s['county'] === '') {
                 $county = $d['county'] ?: Stations::countyFromPostal($set['postal_code'] ?? $s['postal_code'], $set['city'] ?? $s['city']);
@@ -193,8 +196,14 @@ final class InaSync
             $set['services'] = json_encode($page['services'], JSON_UNESCAPED_UNICODE);
             $what[] = 'usluge';
         }
-        foreach (['phone', 'lat', 'lng'] as $f) {
+        foreach (['phone', 'lat', 'lng', 'address'] as $f) {
             if ($station[$f] === '' && $page['details'][$f] !== '') { $set[$f] = $page['details'][$f]; $what[] = $f; }
+        }
+        // INA's organisational region ("Regija: ZAPAD") – kept apart from the county.
+        $region = $page['details']['ina_region'];
+        if ($region !== '' && $region !== $station['ina_region'] && (!$station['locked'] || $station['ina_region'] === '')) {
+            $set['ina_region'] = $region;
+            $what[] = 'regija';
         }
 
         // 3. Notice for the admin. The hours table saying "PRIVREMENO ZATVORENO" every day is INA's

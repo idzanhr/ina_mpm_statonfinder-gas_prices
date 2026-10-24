@@ -111,6 +111,11 @@
   function load() {
     return api("list").then(function (d) { state.stations = d.stations; });
   }
+  // Same sources as Render::cardFuels(): ina.hr fuels, Usluge/Ostalo, or the admin's checkboxes.
+  function hasAdblue(s) {
+    return s.adblue_have || s.adblue_pump || s.fuels.some(function (f) { return f.cat === "adblue"; })
+      || s.services.some(function (x) { return /ad\s*blue/i.test(x); });
+  }
   function fuelSummary(s) {
     return (s.fuels || []).map(function (f) { return f.name + (f.price ? " " + euro(f.price) : ""); }).join(" · ");
   }
@@ -125,7 +130,8 @@
     ["nocounty", "Bez županije", function (s) { return !s.county; }],
     ["nohours", "Bez radnog vremena", function (s) { return !s.working_hours.length; }],
     ["nofuels", "Bez goriva / cijena", function (s) { return !s.fuels.length; }],
-    ["adblue", "Imaju AdBlue (ina.hr)", function (s) { return s.fuels.some(function (f) { return f.cat === "adblue"; }); }],
+    ["adblue", "Imaju AdBlue", hasAdblue],
+    ["noadblue", "Bez AdBlue", function (s) { return !hasAdblue(s); }],
     ["adbluepump", "AdBlue iz pištolja (označeno)", function (s) { return s.adblue_pump; }]
   ];
 
@@ -153,7 +159,7 @@
       var n = norm(state.q.trim());
       var test = (FILTERS.filter(function (f) { return f[0] === state.which; })[0] || FILTERS[0])[2];
       var shown = state.stations.filter(function (s) {
-        return test(s) && (!n || norm([s.name, s.aliases, s.county, s.city, s.postal_code, s.address, s.phone, s.status_note, s.note].join(" ")).indexOf(n) !== -1);
+        return test(s) && (!n || norm([s.name, s.aliases, s.county, s.ina_region, s.city, s.postal_code, s.address, s.phone, s.status_note, s.note].join(" ")).indexOf(n) !== -1);
       });
       var notices = state.stations.filter(function (s) { return s.ina_notice; }).length;
       var missing = state.stations.filter(function (s) { return s.ina_missing; }).length;
@@ -165,10 +171,10 @@
       list.replaceChildren.apply(list, shown.slice(0, limit).map(function (s) {
         if (state.editing === s.id) return h("div", { class: "row editing" }, stationForm(s, done));
         var flags = [s.hidden ? "sakrivena" : null, s.locked ? "zaključana" : null, !s.ina_url ? "bez INA poveznice" : null,
-          s.adblue_pump ? "AdBlue iz pištolja" : null].filter(Boolean);
+          hasAdblue(s) ? "AdBlue" : null, s.adblue_pump ? "AdBlue iz pištolja" : null].filter(Boolean);
         return h("div", { class: "row" + (s.hidden ? " row-hidden" : "") },
           h("div", { class: "row-main" },
-            h("p", { class: "row-title" }, s.name, " ", h("span", { class: "muted small", text: "· " + [s.city, s.county || "bez županije"].filter(Boolean).join(", ") })),
+            h("p", { class: "row-title" }, s.name, " ", h("span", { class: "muted small", text: "· " + [s.city, s.county || "bez županije", s.ina_region ? "regija " + s.ina_region : ""].filter(Boolean).join(", ") })),
             flags.length ? h("p", { class: "flags small" }, flags.map(function (f) { return h("span", { class: "flag", text: f }); })) : null,
             statusBadge(s),
             s.fuels.length ? h("p", { class: "muted small truncate", title: fuelSummary(s), text: fuelSummary(s) }) : null,
@@ -215,7 +221,7 @@
 
   function stationForm(s, onDone) {
     var f = s ? JSON.parse(JSON.stringify(s)) : { name: "", address: "", city: "", postal_code: "", phone: "", county: "", lat: "", lng: "", aliases: "", note: "",
-      ina_url: "", working_hours: [], services: [], fuels: [], hidden: 0, locked: 0, adblue_pump: 0, status: "open", status_note: "", closed_from: "", closed_until: "" };
+      ina_url: "", working_hours: [], services: [], fuels: [], hidden: 0, locked: 0, adblue_have: 0, adblue_pump: 0, ina_region: "", status: "open", status_note: "", closed_from: "", closed_until: "" };
     f.status = f.status || "open";
     var aliases = f.aliases.split("/").map(function (a) { return a.trim(); }).filter(Boolean);
     var services = f.services.slice();
@@ -301,6 +307,7 @@
       field("Poštanski broj", bind("postal_code", { inputmode: "numeric" })),
       field("Telefon", keyed("phone", { type: "tel" })),
       field("Županija", county),
+      field("INA regija (organizacijska jedinica, s ina.hr)", bind("ina_region", { maxlength: 60, placeholder: "npr. ZAPAD" })),
       field("Geografska širina (lat)", keyed("lat", { inputmode: "decimal", placeholder: "npr. 45.815011" })),
       field("Geografska dužina (lng)", keyed("lng", { inputmode: "decimal", placeholder: "npr. 15.981919" })),
       field("INA.hr poveznica", keyed("ina_url", { type: "url", placeholder: "https://www.ina.hr/station/…/" }), "span2"),
@@ -314,6 +321,7 @@
         h("p", { class: "muted small", text: "Popunjava se s ina.hr; ručne izmjene zadržite opcijom „Zaključaj ručne izmjene”." })),
       h("div", { class: "span2" }, h("p", { class: "label", text: "Goriva i cijene (samo s ina.hr)" }), fuelsBox,
         h("div", { class: "status-box adblue-box" },
+          flag("adblue_have", "Ima AdBlue", "– prikazuje AdBlue (bez cijene) i kad ga ina.hr ne navodi. Sinkronizacija ga ne mijenja."),
           flag("adblue_pump", "Moguće istakanje AdBlue iz pištolja", "– provjereno u aplikaciji INA Loyalty (klik na postaju). Na ina.hr se ne vidi, pa ga sinkronizacija nikad ne mijenja. Na stranici se prikazuje uz AdBlue (bez cijene) i u filteru „AdBlue – istakanje iz pištolja”."))),
       h("div", { class: "span2" }, h("p", { class: "label", text: "Radno vrijeme" }),
         s ? h("div", { class: "inline" }, syncBtn, h("span", { class: "muted small", text: "Odmah preuzima radno vrijeme, goriva, cijene i usluge ove postaje s ina.hr i objavljuje." })) : null,
@@ -362,6 +370,7 @@
     var file = h("input", { type: "file", accept: ".json,.csv,application/json,text/csv", class: "input" });
     var result = h("div");
     var btn = h("button", { class: "btn-primary", type: "submit" }, "Uvezi");
+    var addNew = h("input", { type: "checkbox" });
     view.replaceChildren(
       h("div", { class: "panel" },
         h("h2", { text: "Izvoz" }),
@@ -372,9 +381,10 @@
       h("form", { class: "panel", onsubmit: function (e) {
         e.preventDefault();
         if (!file.files[0]) return toast("Odaberite datoteku.", true);
-        if (!confirm("Uvoz ažurira postojeće postaje i dodaje nove. Nastaviti?")) return;
+        if (!confirm(addNew.checked ? "Uvoz ažurira postojeće postaje i dodaje nove. Nastaviti?" : "Uvoz ažurira postojeće postaje (nove se ne dodaju). Nastaviti?")) return;
         var fd = new FormData();
         fd.append("file", file.files[0]);
+        fd.append("add_new", addNew.checked ? "1" : "0");
         btn.disabled = true;
         api("import", fd, true).then(function (d) {
           btn.disabled = false;
@@ -384,8 +394,10 @@
         }).catch(function (err) { btn.disabled = false; fail(err); });
       } },
         h("h2", { text: "Uvoz" }),
-        h("p", { class: "muted small", text: "JSON (izvoz ovog sustava) ili CSV sa zaglavljem kao u izvozu (name;address;city;postal_code;county;phone;lat;lng;aliases;note;ina_url;…). Postaje se spajaju po INA poveznici, zatim po nazivu i mjestu; polja kojih nema u datoteci ostaju nepromijenjena. Goriva i cijene se ne uvoze." }),
-        file, h("div", { class: "inline" }, btn), result),
+        h("p", { class: "muted small", text: "JSON (izvoz ovog sustava) ili CSV sa zaglavljem kao u izvozu (name;address;city;postal_code;county;ina_region;phone;lat;lng;aliases;note;ina_url;hidden;locked;adblue_have;adblue_pump;…). Može i samo dio stupaca, npr. name;address;city;county;adblue_have. Postaja se traži po INA poveznici, zatim po nazivu i mjestu, zatim samo po nazivu (velika/mala slova i č/ć/đ/š/ž se ne razlikuju). Polja kojih nema u datoteci ostaju nepromijenjena; adrese, mjesta i poštanski brojevi iz uvoza ostaju i nakon sinkronizacije. Goriva i cijene se ne uvoze." }),
+        file, h("label", { class: "check" }, addNew, h("span", null, h("b", { text: "Dodaj i nove postaje" }), " ",
+          h("span", { class: "muted", text: "– inače se retci koje nije moguće povezati s postojećom postajom samo navedu (postaje dolaze s ina.hr)." }))),
+        h("div", { class: "inline" }, btn), result),
       h("div", { class: "panel" },
         h("h2", { text: "Objava" }),
         h("p", { class: "muted small", text: "Svaka promjena automatski ponovno generira javnu stranicu (index.html i data/stations.json). Ovdje to možete pokrenuti i ručno, npr. nakon izmjene predloška." }),

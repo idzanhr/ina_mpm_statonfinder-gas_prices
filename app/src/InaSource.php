@@ -247,7 +247,8 @@ final class InaSource
     {
         $xp = self::xpath($html);
         $out = [];
-        foreach (self::headings($xp, '/^(usluge|sadržaj[i]?|ponuda|dodatna\s+ponuda|ostala\s+ponuda|dodatne\s+usluge)(\s+(na|postaje|na\s+postaji))?\s*:?$/iu') as $heading) {
+        // "Ostalo" is where ina.hr lists Maziva, Roba široke potrošnje and "Ad Blue" (e.g. Zagreb-Zagrebačka cesta-istok).
+        foreach (self::headings($xp, '/^(usluge|sadržaj[i]?|ponuda|ostalo|dodatna\s+ponuda|ostala\s+ponuda|dodatne\s+usluge)(\s+(na|postaje|na\s+postaji))?\s*:?$/iu') as $heading) {
             $list = $xp->query('(following::*[self::ul or self::ol])[1]', $heading)->item(0);
             if (!$list) continue;
             foreach ($xp->query('./li', $list) as $li) {
@@ -264,8 +265,9 @@ final class InaSource
     }
 
     /**
-     * Station name (the page's <h1>), first tel: number and coordinates (data-lat/data-lng
-     * attributes, a JSON "lat"/"lng" pair or a Google Maps link). Used only to fill gaps
+     * Station name (the page's <h1>), the contact box ("Mob: 091 4971 366", "Adresa: Zagrebačka cesta bb",
+     * "Regija: ZAPAD" – INA's own organisational region, not a county), the first tel: number and coordinates
+     * (data-lat/data-lng attributes, a JSON "lat"/"lng" pair or a Google Maps link). Used only to fill gaps
      * the finder left; empty strings when not found.
      */
     public static function parseDetails(string $html): array
@@ -275,6 +277,13 @@ final class InaSource
         $phone = '';
         $tel = $xp->query('//a[starts-with(@href, "tel:")]')->item(0);
         if ($tel instanceof \DOMElement) $phone = self::text($tel->textContent) ?: substr($tel->getAttribute('href'), 4);
+        $labelled = [];
+        foreach ($xp->query('//li | //p | //div[not(*[self::div or self::p or self::li])] | //span | //dd | //tr') as $node) {
+            $t = self::text($node->textContent);
+            if (mb_strlen($t) > 120 || !preg_match('/^(Mob|Tel|Telefon|Adresa|Regija)\s*:\s*(.+)$/iu', $t, $m)) continue;
+            $labelled[mb_strtolower($m[1])] ??= trim($m[2]);
+        }
+        if ($phone === '') $phone = $labelled['mob'] ?? $labelled['tel'] ?? $labelled['telefon'] ?? '';
         $coords = null;
         $patterns = [
             '/data-lat(?:itude)?=["\'](-?\d+\.\d+)["\'][^>]*?data-(?:lng|lon|long|longitude)=["\'](-?\d+\.\d+)/i',
@@ -284,7 +293,8 @@ final class InaSource
         foreach ($patterns as $p) {
             if (preg_match($p, $html, $m) && ($coords = self::coords($m[1], $m[2]))) break;
         }
-        return ['name' => mb_substr($name, 0, 190), 'phone' => mb_substr($phone, 0, 64), 'lat' => $coords[0] ?? '', 'lng' => $coords[1] ?? ''];
+        return ['name' => mb_substr($name, 0, 190), 'phone' => mb_substr($phone, 0, 64), 'lat' => $coords[0] ?? '', 'lng' => $coords[1] ?? '',
+            'address' => mb_substr($labelled['adresa'] ?? '', 0, 255), 'ina_region' => mb_substr($labelled['regija'] ?? '', 0, 60)];
     }
 
     /**

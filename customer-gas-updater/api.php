@@ -44,7 +44,7 @@ try {
             $file = $_FILES['file'] ?? null;
             if (!$file || $file['error'] !== UPLOAD_ERR_OK) throw new HttpError(400, 'Datoteka nije učitana.');
             if ($file['size'] > 5 * 1024 * 1024) throw new HttpError(413, 'Datoteka je prevelika (najviše 5 MB).');
-            [$created, $updated, $errors] = Stations::import((string) file_get_contents($file['tmp_name']), (string) $file['name']);
+            [$created, $updated, $errors] = Stations::import((string) file_get_contents($file['tmp_name']), (string) $file['name'], ($_POST['add_new'] ?? '') === '1');
             Stations::publish();
             Audit::log('import', '', "Novih: $created, ažuriranih: $updated, grešaka: " . count($errors));
             Web::json(['created' => $created, 'updated' => $updated, 'errors' => $errors]);

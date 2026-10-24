@@ -147,12 +147,32 @@ test('services: list after "Usluge" in the page (icons by alt text), not the men
     eq([], InaSource::parseServices('<p>Nema usluga</p>'));
 });
 test('details: <h1>, tel: link and coordinates from a map link or data attributes', function () use ($murterPage) {
-    eq(['name' => 'Murter', 'phone' => '091 4971 474', 'lat' => '43.822051', 'lng' => '15.593712'], InaSource::parseDetails($murterPage()));
+    eq(['name' => 'Murter', 'phone' => '091 4971 474', 'lat' => '43.822051', 'lng' => '15.593712', 'address' => '', 'ina_region' => ''], InaSource::parseDetails($murterPage()));
     eq(['45.815011', '15.981919'], [InaSource::parseDetails('<div data-lat="45.815011" data-lng="15.981919"></div>')['lat'], InaSource::parseDetails('<div data-lat="45.815011" data-lng="15.981919"></div>')['lng']]);
 });
 test('closure wording is found and quoted whole; scripts are ignored', function () {
     eq('Postaja je privremeno zatvorena zbog radova do 15.11.2026', InaSource::closureNotice('<p>Postaja je privremeno zatvorena zbog radova do 15.11.2026.</p>'));
     eq('', InaSource::closureNotice('<script>var t = "privremeno zatvoreno";</script><p>Radimo.</p>'));
+});
+
+// Laid out like https://www.ina.hr/station/zagreb-zagrebacka-cesta-istok/ (contact box, Usluge, Ostalo with "Ad Blue")
+$inaLayout = '<html><body><h1>Zagreb-Zagrebačka cesta-istok</h1><div class="station__contact"><h3>Kontakt</h3><ul>'
+    . '<li><strong>Mob:</strong> 091 4971 366</li><li><strong>Adresa:</strong> Zagrebačka cesta bb</li><li><strong>Regija:</strong> ZAPAD</li></ul>'
+    . '<a href="#">Prikažite lokaciju na karti</a></div>'
+    . '<table class="station__info__tablebox__table"><tr><th>Radno vrijeme</th><th>Radni dan</th><th>Subota</th><th>Nedjelja</th><th>Blagdani</th></tr>'
+    . '<tr><td>Redovno</td><td>06 - 22</td><td>06 - 22</td><td>06 - 22</td><td>06 - 22</td></tr></table>'
+    . '<h3>Goriva u ponudi</h3><ul><li>Eurosuper 95 Class Plus Premium - 1,89 €</li><li>Eurosuper 95 Class Plus - 1,73 €</li>'
+    . '<li>Eurodiesel Class Plus - 1,87 €</li><li>Eurodiesel Class Plus Premium - 2,12 €</li></ul>'
+    . '<h3>Usluge</h3><ul><li>Plin u bocama</li><li>Fresh Corner</li></ul>'
+    . '<h3>Ostalo</h3><ul><li>Maziva</li><li>Roba široke potrošnje</li><li>Ad Blue</li></ul></body></html>';
+test('ina.hr layout: "Ostalo" (with Ad Blue) is read; Mob/Adresa/Regija from the contact box', function () use ($inaLayout) {
+    eq(['Plin u bocama', 'Fresh Corner', 'Maziva', 'Roba široke potrošnje', 'Ad Blue'], InaSource::parseServices($inaLayout));
+    eq(['Zagreb-Zagrebačka cesta-istok', '091 4971 366', 'Zagrebačka cesta bb', 'ZAPAD'],
+        (fn($d) => [$d['name'], $d['phone'], $d['address'], $d['ina_region']])(InaSource::parseDetails($inaLayout)));
+    eq(['es95cp|1.73', 'es95cpp|1.89', 'edcp|1.87', 'edcpp|2.12'], array_map(fn($f) => "{$f['cat']}|{$f['price']}", InaSource::parseFuels($inaLayout)));
+    // "Ad Blue" under Ostalo → the card lists AdBlue (no price) and the filter finds it
+    [$fuels, $tokens] = Render::cardFuels(['fuels' => InaSource::parseFuels($inaLayout), 'services' => InaSource::parseServices($inaLayout)]);
+    eq(true, in_array('adblue', $tokens, true));
 });
 
 echo "Stations: counties, validation, hiding\n";
@@ -421,6 +441,52 @@ test('CSV export → import round trip (semicolon, BOM); matched by INA link, no
     [$created, $updated, $errors] = Stations::import($csv, 'postaje.csv');
     eq([0, $before, []], [$created, $updated, $errors]);
     eq('Put Gradine 2', Db::one("SELECT address FROM stations WHERE name = 'Murter'")['address']);
+});
+
+echo "Checked list from Excel (names, addresses, counties, AdBlue)\n";
+test('import by name only: case/č/spaces around "-" ignored, county without "županija", nothing new added', function () {
+    Stations::save(null, ['name' => 'Đakovo-Nazorova', 'city' => 'Đakovo']);
+    $before = (int) Db::one('SELECT COUNT(*) AS n FROM stations')['n'];
+    $csv = "name;address;city;county;adblue_have\n"
+        . "MURTER;Put Gradine 9;Murter;Šibensko-kninska;1\n"
+        . "postaja 3;Ulica 3a;Zagreb;Zagrebačka;0\n"
+        . "đakovo - NAZOROVA;Vladimira Nazora 70;Đakovo;Osječko-baranjska;1\n"
+        . "Nepostojeća;Nigdje 1;Nigdje;Istarska;1\n"
+        . "Murter;Put Gradine 9;Murter;Mars;1\n";
+    [$created, $updated, $errors] = Stations::import($csv, 'provjereno.csv');
+    eq([0, 3], [$created, $updated]);
+    eq((int) $before, (int) Db::one('SELECT COUNT(*) AS n FROM stations')['n']);
+    eq(['Redak 5 (Nepostojeća): postaja nije pronađena (nije dodana)', 'Redak 6 (Murter): ista postaja već je u retku 2'], $errors);
+    $m = Db::one("SELECT * FROM stations WHERE name = 'Murter'");
+    eq(['Put Gradine 9', 'Šibensko-kninska županija', '1'], [$m['address'], $m['county'], (string) $m['adblue_have']]);
+    eq('Zagrebačka županija', Db::one("SELECT county FROM stations WHERE name = 'Postaja 3'")['county']);
+    eq(['Vladimira Nazora 70', 'Osječko-baranjska županija', '1'], array_values(array_map('strval', Db::one("SELECT address, county, adblue_have FROM stations WHERE name = 'Đakovo-Nazorova'"))));
+});
+test('two stations with the same name: the row is reported, not guessed', function () {
+    Stations::save(null, ['name' => 'Dvojnik', 'city' => 'A']);
+    Stations::save(null, ['name' => 'Dvojnik', 'city' => 'B']);
+    [, $updated, $errors] = Stations::import("name;address\nDvojnik;X 1\nDvojnik;Y 2\n", 'x.csv');
+    eq(0, $updated);
+    eq(true, str_contains($errors[0], 'više postaja s tim nazivom'));
+    [, $updated] = Stations::import("name;city;address\nDvojnik;B;Y 2\n", 'x.csv'); // with the city it is clear
+    eq(1, $updated);
+    eq('Y 2', Db::one("SELECT address FROM stations WHERE name = 'Dvojnik' AND city = 'B'")['address']);
+});
+test('the sync keeps imported addresses and cities, and stores the INA region separately from the county', function () use ($serve, $directory, $dirEntries, $murterPage) {
+    $entries = $dirEntries;
+    $entries[count($entries) - 1]['address'] = 'Put Gradine 1'; // ina.hr still has the old address
+    $page = str_replace('<h1>Murter</h1>', '<h1>Murter</h1><ul><li><b>Regija:</b> JUG</li><li><b>Adresa:</b> Put Gradine 1</li></ul>', $murterPage());
+    $serve([InaSource::DIRECTORY_URL => $directory($entries), 'https://www.ina.hr/station/murter/' => $page]);
+    InaSync::sync(null, null, null, pages: false);
+    InaSync::sync(null, 'Murter');
+    $m = Db::one("SELECT * FROM stations WHERE name = 'Murter'");
+    eq(['Put Gradine 9', 'Murter', 'Šibensko-kninska županija', 'JUG'], [$m['address'], $m['city'], $m['county'], $m['ina_region']]);
+});
+test('"Ima AdBlue" (from the list) shows AdBlue on the card even when ina.hr does not list it', function () {
+    $pub = array_column(Stations::publicRows(), null, 'name')['Murter'];
+    eq(1, $pub['adblue_have']);
+    has('<span class="fuel-name">AdBlue</span>', Render::card($pub));
+    eq(false, array_key_exists('ina_region', $pub)); // internal, not published
 });
 
 echo "\n$count tests, $failures failed\n";

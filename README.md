@@ -32,8 +32,9 @@ A searchable list of **all INA petrol stations in Croatia**: working hours, whic
   Eurodiesel plavi, Eurodiesel Class Plus Expert (the list and order live in `Fuels::CATEGORIES`). Each shows
   the most common price on INA stations, the range and how many stations sell it. For a week after ina.hr changes a
   price it says **NOVA CIJENA od … – prije … (pojeftinjenje −0,04 €)**.
-* **AdBlue**: listed on every station that has it (from the ina.hr fuel or service list), **always without a
-  price**, and in the fuel filter. Whether AdBlue can be **dispensed from a pump nozzle** is not on ina.hr, only in the
+* **AdBlue**: listed on every station that has it, **always without a price**, and in the fuel filter. A station
+  has it if ina.hr lists it (under *Goriva u ponudi*, *Usluge* or *Ostalo*, where ina.hr usually puts "Ad Blue"), or if
+  the admin ticked **"Ima AdBlue"**, by hand or through an import (`adblue_have` column). Whether AdBlue can be **dispensed from a pump nozzle** is not on ina.hr, only in the
   INA Loyalty app (tap the station). The admin ticks **"Moguće istakanje AdBlue iz pištolja"** on the station. The card
   then says *"moguće istakanje iz pištolja"*, and the filter gets **"AdBlue – istakanje iz pištolja"**. The sync never
   changes this checkbox.
@@ -50,11 +51,14 @@ A searchable list of **all INA petrol stations in Croatia**: working hours, whic
 ## How data comes from ina.hr (`bin/sync-ina.php`)
 
 1. **The finder** (one request): every entry of `div#mdata[stations]` is matched to a station by its ina.hr link.
-   New ones are **added automatically**; name/address/city/postcode/phone/coordinates are updated; a missing county
+   New ones are **added automatically**. Name, phone and coordinates are updated. Address, city and postcode are only
+   **filled while empty**, so addresses checked by hand or imported stay as they are. A missing county
    is taken from the finder or guessed from the postcode (10xxx → Grad Zagreb or Zagrebačka). Stations the finder no
    longer lists are **flagged, never deleted** ("Više nisu u tražilici ina.hr" in the editor).
 2. **Each station page**: the working-hours table, the **"Goriva u ponudi"** list (every fuel with its price), the
-   services list ("Usluge"/"Sadržaji"…), phone and coordinates if the finder lacked them, and closure wording.
+   lists under "Usluge" and "Ostalo" (shown as services on the card), the contact box ("Mob", "Adresa" when the
+   station has none yet, and **"Regija"**, INA's organisational unit such as ZAPAD), coordinates if the finder lacked
+   them, and closure wording. The INA region is stored apart from the county (županija) and shown only in the editor.
    * A changed price keeps the old one and the date → card/overview "nova cijena", a `price_history` row and an
      entry in the **Dnevnik**. A fuel listed without a price keeps its last known price; a page that cannot be read
      changes nothing.
@@ -64,7 +68,7 @@ A searchable list of **all INA petrol stations in Croatia**: working hours, whic
 3. The site is re-published after any change.
 
 **What you control in the editor** (never overwritten by the sync): nicknames, a public note on the card,
-*AdBlue iz pištolja*,
+*Ima AdBlue*, *AdBlue iz pištolja*, county, address/city/postcode once set,
 temporary closures with dates, **Sakrij s javne stranice**, and **Zaključaj ručne izmjene** (the sync then keeps
 your name/address/phone/hours/services; fuels and prices still come from ina.hr). Prices cannot be entered by hand.
 Stations still listed on ina.hr can only be hidden, not deleted (the sync would add them back).
@@ -104,6 +108,18 @@ Stations still listed on ina.hr can only be hidden, not deleted (the sync would 
    Add more hours (e.g. `* 0,4,12 * * *`) for fresher prices. Requests are spaced by `ina_delay_ms`.
 
 **Updating later:** `git pull && php bin/upgrade.php`. Generated files are git-ignored, so pulls never conflict.
+
+## Importing a checked list (Excel)
+
+**Uvoz / izvoz → Uvoz** takes a CSV saved from Excel ("CSV UTF-8", `;` or `,`) with a header row. Any subset of the
+export's columns works, e.g. `name;address;city;county;adblue_have`.
+
+* A row finds its station by `ina_url`, then by name + city, then by **name alone** when exactly one station has it.
+  Case, spaces around "-" and č/ć/đ/š/ž don't matter, and the station keeps its own spelling of the name.
+* Counties may be written without "županija" (`Vukovarsko-srijemska`).
+* Only **existing stations are updated**. Rows that match nothing (or match two stations) are listed after the import
+  instead of being added; tick *Dodaj i nove postaje* to add them.
+* Columns not in the file are left alone. Imported addresses, cities and postcodes are not overwritten by the sync.
 
 ## Bunny CDN
 
@@ -181,7 +197,7 @@ Origin check · strict CSP without inline scripts · audit log (**Dnevnik**) of 
 cp app/config.example.php app/config.php   # dsn: 'sqlite:' . __DIR__ . '/../var/ina-postaje.sqlite', app_key
 mkdir -p var && php bin/install.php        # add --no-sync without internet access
 php -S 127.0.0.1:8000 -t . bin/dev-router.php   # same whitelist as production; admin at /customer-gas-updater/
-php tests/run.php            # 41 tests: TOTP, crypto, ina.hr parsers, sync (add/flag/prices/closures/locks), rendering, import
+php tests/run.php            # 46 tests: TOTP, crypto, ina.hr parsers, sync (add/flag/prices/closures/locks), rendering, import
 node tests/hours.test.js     # 18 tests: "Sada radi" – formats, overnight, non-stop, holidays
 node tests/contrast.test.js  # 46 checks: WCAG AA contrast of every token pair, light + dark
 ```

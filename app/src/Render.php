@@ -200,8 +200,8 @@ final class Render
 
     /**
      * The fuels a card lists, and its filter tokens (data-fuels). AdBlue is listed without a price
-     * when ina.hr has it as a fuel or a service, or when the admin ticked "moguće istakanje iz
-     * pištolja" (seen only in the INA Loyalty app); that flag also adds the 'adblue-pump' token.
+     * when ina.hr has it as a fuel or under Usluge/Ostalo, when the admin ticked "Ima AdBlue", or
+     * "moguće istakanje iz pištolja" (seen only in the INA Loyalty app); that one also adds 'adblue-pump'.
      * @return array{0: array, 1: string[]}
      */
     public static function cardFuels(array $s): array
@@ -216,7 +216,7 @@ final class Render
         $pump = !empty($s['adblue_pump']);
         $listed = in_array('adblue', array_column($fuels, 'cat'), true);
         $asService = (bool) preg_grep('/ad\s*blue/iu', $s['services'] ?? []);
-        if (!$listed && ($pump || $asService)) {
+        if (!$listed && ($pump || $asService || !empty($s['adblue_have']))) {
             $fuels[] = ['name' => 'AdBlue', 'cat' => 'adblue', 'price' => '', 'prev' => '', 'changed_at' => ''];
             Fuels::sort($fuels);
         }

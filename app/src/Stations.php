@@ -26,13 +26,16 @@ final class Stations
     ];
 
     /** Fields the admin edits. Fuels and prices are never edited by hand: they only come from ina.hr. */
-    public const TEXT_FIELDS = ['name', 'address', 'city', 'postal_code', 'county', 'phone', 'lat', 'lng', 'aliases', 'note', 'ina_url',
+    public const TEXT_FIELDS = ['name', 'address', 'city', 'postal_code', 'county', 'ina_region', 'phone', 'lat', 'lng', 'aliases', 'note', 'ina_url',
         'status', 'status_note', 'closed_from', 'closed_until'];
-    private const MAX = ['name' => 190, 'address' => 255, 'city' => 120, 'postal_code' => 16, 'county' => 120, 'phone' => 64,
+    private const MAX = ['name' => 190, 'address' => 255, 'city' => 120, 'postal_code' => 16, 'county' => 120, 'ina_region' => 60, 'phone' => 64,
         'lat' => 16, 'lng' => 16, 'aliases' => 2000, 'note' => 500, 'ina_url' => 255,
         'status' => 16, 'status_note' => 255, 'closed_from' => 10, 'closed_until' => 10];
-    /** hidden = not published, locked = sync keeps manual edits, adblue_pump = AdBlue from a pump nozzle (INA Loyalty app). */
-    public const FLAGS = ['hidden', 'locked', 'adblue_pump'];
+    /**
+     * hidden = not published, locked = sync keeps manual edits, adblue_have = has AdBlue (confirmed by the admin),
+     * adblue_pump = AdBlue from a pump nozzle (INA Loyalty app). The sync never changes any of them.
+     */
+    public const FLAGS = ['hidden', 'locked', 'adblue_have', 'adblue_pump'];
     public const STATUSES = ['open', 'closed'];
     private const HOURS_KEYS = ['label', 'week', 'sat', 'sun', 'hol'];
 
@@ -103,7 +106,7 @@ final class Stations
     private static function fold(string $s): string
     {
         $s = strtr(mb_strtolower(trim($s), 'UTF-8'), ['č' => 'c', 'ć' => 'c', 'đ' => 'd', 'š' => 's', 'ž' => 'z']);
-        return trim(preg_replace('/\s+/', ' ', $s));
+        return trim(preg_replace(['/\s+/u', '/ ?[-–] ?/u'], [' ', '-'], $s));
     }
 
     // ---- validation ----------------------------------------------------
@@ -123,7 +126,11 @@ final class Stations
         foreach (self::FLAGS as $f) $row[$f] = !empty($in[$f]) ? 1 : 0;
         $row['aliases'] = implode(' / ', self::splitAliases($row['aliases']));
         if ($row['name'] === '') $errors[] = 'Naziv je obavezan.';
-        if ($row['county'] !== '' && !in_array($row['county'], self::COUNTIES, true)) $errors[] = 'Nepoznata županija.';
+        if ($row['county'] !== '' && !in_array($row['county'], self::COUNTIES, true)) {
+            // "Vukovarsko-srijemska", "GRAD ZAGREB" … → the official name
+            $row['county'] = self::county($row['county']) ?: $row['county'];
+            if (!in_array($row['county'], self::COUNTIES, true)) $errors[] = 'Nepoznata županija: ' . $row['county'] . '.';
+        }
         if ($row['ina_url'] !== '') {
             $url = InaSource::safeUrl($row['ina_url']);
             if ($url === null) $errors[] = 'INA poveznica mora biti oblika https://www.ina.hr/station/…/';
@@ -284,31 +291,50 @@ final class Stations
     // ---- import / export -----------------------------------------------
 
     /**
-     * Upserts by INA link, then by name + city. Accepts this CMS's JSON export or CSV with a header
-     * row. Fields absent from the file keep their current values. Returns [created, updated, errors].
+     * Updates stations from this CMS's JSON export or a CSV with a header row (e.g. a checked list from Excel:
+     * name;address;city;county;adblue_have). A row finds its station by INA link, then by name + city, then by
+     * name alone when exactly one station has it (case, spaces and č/ć/đ/š/ž ignored). Fields absent from the
+     * file keep their current values. Stations come from ina.hr, so by default a row that matches nothing is
+     * reported, not added ($addNew = true adds it). Returns [created, updated, errors].
      */
-    public static function import(string $content, string $filename): array
+    public static function import(string $content, string $filename, bool $addNew = false): array
     {
-        $rows = str_ends_with(strtolower($filename), '.csv') ? self::parseCsv($content) : json_decode($content, true);
+        $isCsv = str_ends_with(strtolower($filename), '.csv');
+        $rows = $isCsv ? self::parseCsv($content) : json_decode($content, true);
         if (is_array($rows) && isset($rows['stations'])) $rows = $rows['stations'];
         if (!is_array($rows) || !array_is_list($rows)) throw new HttpError(422, 'Datoteka nije ispravan JSON/CSV popis postaja.');
 
+        $byName = [];
+        foreach (Db::all('SELECT id, name FROM stations') as $r) $byName[self::fold($r['name'])][] = (int) $r['id'];
         $created = $updated = 0;
         $errors = [];
+        $seen = [];
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         try {
             foreach ($rows as $i => $in) {
-                if (!is_array($in)) { $errors[] = 'Redak ' . ($i + 1) . ': neispravan zapis'; continue; }
+                $line = 'Redak ' . ($i + ($isCsv ? 2 : 1)); // CSV: row 1 is the header, as in Excel
+                if (!is_array($in)) { $errors[] = "$line: neispravan zapis"; continue; }
+                $name = trim((string) ($in['name'] ?? ''));
+                $label = "$line (" . ($name !== '' ? $name : '?') . ')';
                 $url = InaSource::safeUrl((string) ($in['ina_url'] ?? ''));
                 $existing = $url ? Db::one('SELECT * FROM stations WHERE ina_url = ?', [$url]) : null;
-                $existing ??= Db::one('SELECT * FROM stations WHERE name = ? AND city = ?', [trim((string) ($in['name'] ?? '')), trim((string) ($in['city'] ?? ''))]);
+                $existing ??= $name !== '' ? Db::one('SELECT * FROM stations WHERE name = ? AND city = ?', [$name, trim((string) ($in['city'] ?? ''))]) : null;
+                if (!$existing && $name !== '') {
+                    $ids = $byName[self::fold($name)] ?? [];
+                    if (count($ids) > 1) { $errors[] = "$label: više postaja s tim nazivom – dodajte stupac city ili ina_url"; continue; }
+                    if ($ids) $existing = Db::one('SELECT * FROM stations WHERE id = ?', [$ids[0]]);
+                }
+                if (!$existing && !$addNew) { $errors[] = "$label: postaja nije pronađena (nije dodana)"; continue; }
+                if ($existing && isset($seen[$existing['id']])) { $errors[] = "$label: ista postaja već je u retku " . $seen[$existing['id']]; continue; }
+                // Matched by name: keep the station's own spelling ("MURTER" in a list does not rename "Murter").
+                if ($existing && $name !== '' && self::fold($name) === self::fold($existing['name'])) $in['name'] = $existing['name'];
                 $merged = $existing ? array_merge(self::hydrate($existing), array_filter($in, fn($v) => $v !== null)) : $in;
                 try {
                     self::save($existing ? (int) $existing['id'] : null, $merged);
-                    $existing ? $updated++ : $created++;
+                    if ($existing) { $seen[$existing['id']] = $i + ($isCsv ? 2 : 1); $updated++; } else { $created++; }
                 } catch (HttpError $e) {
-                    $errors[] = 'Redak ' . ($i + 1) . ' (' . ($in['name'] ?? '?') . '): ' . $e->getMessage();
+                    $errors[] = "$label: " . $e->getMessage();
                 }
             }
             $pdo->commit();
@@ -364,7 +390,7 @@ final class Stations
             'ina_url' => InaSource::safeUrl($s['ina_url']) ?? '', 'working_hours' => $s['working_hours'],
             // Unpriced products (AdBlue) are published without a price, whatever ina.hr says.
             'fuels' => array_map(fn($f) => Fuels::priced($f['cat']) ? $f : ['price' => '', 'prev' => '', 'changed_at' => ''] + $f, $s['fuels']),
-            'adblue_pump' => $s['adblue_pump'], 'services' => $s['services'], 'ina_synced_at' => $s['ina_synced_at'],
+            'adblue_have' => $s['adblue_have'], 'adblue_pump' => $s['adblue_pump'], 'services' => $s['services'], 'ina_synced_at' => $s['ina_synced_at'],
             'status' => $s['status'], 'status_note' => $s['status_note'],
             'closed_from' => $s['closed_from'], 'closed_until' => $s['closed_until'],
         ], $rows));

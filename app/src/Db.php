@@ -61,6 +61,10 @@ final class Db
             // AdBlue from a pump nozzle (not only canisters): set by the admin from the INA Loyalty app,
             // ina.hr does not show it, so the sync never touches it.
             'adblue_pump' => 'TINYINT(1) NOT NULL DEFAULT 0',
+            // INA's own organisational region from the station page ("Regija: ZAPAD"); not a county.
+            'ina_region' => "VARCHAR(60) NOT NULL DEFAULT ''",
+            // AdBlue confirmed by the admin (e.g. from a list), shown even when ina.hr does not list it.
+            'adblue_have' => 'TINYINT(1) NOT NULL DEFAULT 0',
         ],
     ];
 

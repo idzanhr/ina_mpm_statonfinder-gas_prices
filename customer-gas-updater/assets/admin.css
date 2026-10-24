@@ -78,3 +78,4 @@ code { font-family: var(--font-mono); }
 .row-hidden .row-title { color: var(--muted-foreground); text-decoration: line-through; }
 .station-form .table td { border-top: 1px solid var(--border); }
 @media (max-width: 640px) { .row { flex-wrap: wrap; } .row-main { flex-basis: 100%; } }
+.adblue-box { margin-top: .5rem; }

@@ -124,7 +124,9 @@
     ["manual", "Bez INA poveznice", function (s) { return !s.ina_url; }],
     ["nocounty", "Bez županije", function (s) { return !s.county; }],
     ["nohours", "Bez radnog vremena", function (s) { return !s.working_hours.length; }],
-    ["nofuels", "Bez goriva / cijena", function (s) { return !s.fuels.length; }]
+    ["nofuels", "Bez goriva / cijena", function (s) { return !s.fuels.length; }],
+    ["adblue", "Imaju AdBlue (ina.hr)", function (s) { return s.fuels.some(function (f) { return f.cat === "adblue"; }); }],
+    ["adbluepump", "AdBlue iz pištolja (označeno)", function (s) { return s.adblue_pump; }]
   ];
 
   function viewStations() {
@@ -162,7 +164,8 @@
       var limit = 200;
       list.replaceChildren.apply(list, shown.slice(0, limit).map(function (s) {
         if (state.editing === s.id) return h("div", { class: "row editing" }, stationForm(s, done));
-        var flags = [s.hidden ? "sakrivena" : null, s.locked ? "zaključana" : null, !s.ina_url ? "bez INA poveznice" : null].filter(Boolean);
+        var flags = [s.hidden ? "sakrivena" : null, s.locked ? "zaključana" : null, !s.ina_url ? "bez INA poveznice" : null,
+          s.adblue_pump ? "AdBlue iz pištolja" : null].filter(Boolean);
         return h("div", { class: "row" + (s.hidden ? " row-hidden" : "") },
           h("div", { class: "row-main" },
             h("p", { class: "row-title" }, s.name, " ", h("span", { class: "muted small", text: "· " + [s.city, s.county || "bez županije"].filter(Boolean).join(", ") })),
@@ -212,7 +215,7 @@
 
   function stationForm(s, onDone) {
     var f = s ? JSON.parse(JSON.stringify(s)) : { name: "", address: "", city: "", postal_code: "", phone: "", county: "", lat: "", lng: "", aliases: "", note: "",
-      ina_url: "", working_hours: [], services: [], fuels: [], hidden: 0, locked: 0, status: "open", status_note: "", closed_from: "", closed_until: "" };
+      ina_url: "", working_hours: [], services: [], fuels: [], hidden: 0, locked: 0, adblue_pump: 0, status: "open", status_note: "", closed_from: "", closed_until: "" };
     f.status = f.status || "open";
     var aliases = f.aliases.split("/").map(function (a) { return a.trim(); }).filter(Boolean);
     var services = f.services.slice();
@@ -242,7 +245,7 @@
       fuelsBox.replaceChildren(f.fuels.length
         ? h("table", { class: "table" }, h("tbody", null, f.fuels.map(function (x) {
           return h("tr", null, h("td", { text: x.name }), h("td", { class: "muted", text: boot.fuelCategories[x.cat] || x.cat }),
-            h("td", { text: euro(x.price) || "—" }), h("td", { class: "muted", text: x.prev ? "prije " + euro(x.prev) + " (" + (x.changed_at || "").slice(0, 10) + ")" : "" }));
+            h("td", { text: x.cat === "adblue" ? "bez cijene na stranici" : euro(x.price) || "—" }), h("td", { class: "muted", text: x.prev ? "prije " + euro(x.prev) + " (" + (x.changed_at || "").slice(0, 10) + ")" : "" }));
         })))
         : h("p", { class: "muted small", text: "Još nema podataka o gorivima – dolaze sa stranice postaje na ina.hr." }));
     }
@@ -309,7 +312,9 @@
       h("div", { class: "span2" }, h("p", { class: "label", text: "Kako znaju zvati postaju (pretraga)" }), aliasEditor.nodes),
       h("div", { class: "span2" }, h("p", { class: "label", text: "Usluge" }), servicesEditor.nodes,
         h("p", { class: "muted small", text: "Popunjava se s ina.hr; ručne izmjene zadržite opcijom „Zaključaj ručne izmjene”." })),
-      h("div", { class: "span2" }, h("p", { class: "label", text: "Goriva i cijene (samo s ina.hr)" }), fuelsBox),
+      h("div", { class: "span2" }, h("p", { class: "label", text: "Goriva i cijene (samo s ina.hr)" }), fuelsBox,
+        h("div", { class: "status-box adblue-box" },
+          flag("adblue_pump", "Moguće istakanje AdBlue iz pištolja", "– provjereno u aplikaciji INA Loyalty (klik na postaju). Na ina.hr se ne vidi, pa ga sinkronizacija nikad ne mijenja. Na stranici se prikazuje uz AdBlue (bez cijene) i u filteru „AdBlue – istakanje iz pištolja”."))),
       h("div", { class: "span2" }, h("p", { class: "label", text: "Radno vrijeme" }),
         s ? h("div", { class: "inline" }, syncBtn, h("span", { class: "muted small", text: "Odmah preuzima radno vrijeme, goriva, cijene i usluge ove postaje s ina.hr i objavljuje." })) : null,
         h("p", { class: "muted small", text: "Za oznaku „Sada radi” upisujte kao na ina.hr: 06-22, 0-24 (non-stop), 22-06 (preko ponoći), NE RADI; blagdani s datumom: 25.12. NE RADI 26.12. 08-14." }), hoursBox),
@@ -328,7 +333,7 @@
       state.stations.forEach(function (s) {
         if (s.hidden) return;
         s.fuels.forEach(function (x) {
-          if (!x.price) return;
+          if (!x.price || x.cat === "adblue") return; // AdBlue is never priced on the site
           var c = byCat[x.cat] = byCat[x.cat] || {};
           c[x.price] = (c[x.price] || 0) + 1;
         });

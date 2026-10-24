@@ -146,6 +146,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .fuel-name { flex: 1 1 auto; min-width: 0; }
 .fuel-price { font-weight: 800; font-variant-numeric: tabular-nums; }
 .fuel-new { flex-basis: 100%; font-size: .875rem; font-weight: 700; }
+.fuel-note { flex-basis: 100%; font-size: .875rem; font-weight: 600; }
 .fuel.match { background: var(--price-bg); color: var(--price-fg); outline: 2px solid var(--price-accent); outline-offset: -2px; }
 .fuel-date { margin-top: .25rem; font-size: .875rem; color: var(--muted-foreground); }
 .services { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .375rem; }

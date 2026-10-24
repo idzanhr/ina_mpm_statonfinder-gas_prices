@@ -85,7 +85,7 @@ test('INA fuel names map to the site\'s categories', function () {
     // … and spellings that differ a little still find the right product.
     $cases = ['  EUROSUPER 95 class plus ' => 'es95cp', 'Eurosuper 95 Class Plus Premium' => 'es95cpp', 'Eurosuper 100 Class Plus' => 'es100cpp',
         'Eurosuper 95,' => 'es95', 'Eurodiesel Class Plus Expert' => 'edcpe', 'Eurodiesel Class Plus Premium' => 'edcpp', 'Eurodiesel' => 'ed',
-        'Plavi dizel' => 'plavi', 'UNP (autoplin)' => 'lpg', 'AdBlue' => 'other', 'Petrolej' => 'other'];
+        'Plavi dizel' => 'plavi', 'UNP (autoplin)' => 'lpg', 'AdBlue' => 'adblue', 'Ad Blue (kanister 10 l)' => 'adblue', 'Petrolej' => 'other'];
     foreach ($cases as $name => $cat) eq([$name, $cat], [$name, Fuels::category($name)]);
 });
 test('fuels stored with an older product key are re-classified (and ordered) when loaded', function () {
@@ -135,7 +135,7 @@ test('working hours table (with <br> in the holiday cell)', function () use ($mu
 test('"Goriva u ponudi": every item with its price and category; the site menu "Goriva" is ignored', function () use ($murterPage) {
     $f = InaSource::parseFuels($murterPage());
     eq(['Eurosuper 95 Class Plus|es95cp|1.73', 'Eurosuper 100 Class Plus Premium|es100cpp|1.89', 'Eurodiesel Class Plus|edcp|1.67',
-        'Eurodiesel Class Plus Premium|edcpp|1.85', 'Autoplin|lpg|0.89', 'AdBlue|other|'],
+        'Eurodiesel Class Plus Premium|edcpp|1.85', 'Autoplin|lpg|0.89', 'AdBlue|adblue|'],
         array_map(fn($x) => "{$x['name']}|{$x['cat']}|{$x['price']}", $f));
 });
 test('without the heading only "<fuel> – <price> €" lines count', function () {
@@ -221,7 +221,7 @@ test('station page: hours, fuels with prices, services and coordinates are store
     eq(true, $m['ina_synced_at'] !== '');
     $html = (string) file_get_contents(Config::get('web_root') . '/index.html');
     has('<span class="fuel-name">Eurodiesel Class Plus</span> <b class="fuel-price">1,67 €</b>', $html);
-    has('data-fuels="es95cp es100cpp edcp edcpp lpg other"', $html);
+    has('data-fuels="es95cp es100cpp edcp edcpp lpg adblue"', $html);
 });
 test('price change: previous price + date on the fuel, price_history row and Dnevnik; the first pick-up is not a change', function () use ($serve, $murterPage, $murter) {
     eq(0, (int) Db::one('SELECT COUNT(*) AS n FROM price_history')['n']);
@@ -360,6 +360,57 @@ test('published index.html has every placeholder filled, filters with counts, an
     $json = json_decode((string) file_get_contents(Config::get('web_root') . '/data/stations.json'), true);
     eq(true, count($json['stations']) > 20);
     eq(false, array_key_exists('locked', $json['stations'][0])); // internal fields stay internal
+});
+
+echo "AdBlue\n";
+$adRow = fn(array $more) => $more + ['name' => 'Ad', 'address' => '', 'postal_code' => '', 'city' => '', 'county' => '', 'phone' => '', 'lat' => '', 'lng' => '',
+    'aliases' => '', 'note' => '', 'ina_url' => '', 'working_hours' => [], 'fuels' => [], 'services' => [], 'adblue_pump' => 0, 'ina_synced_at' => '2026-10-24 04:00:00',
+    'status' => 'open', 'status_note' => '', 'closed_from' => '', 'closed_until' => ''];
+test('AdBlue is listed and filterable but never priced (card, sort data, overview, stations.json)', function () use ($adRow) {
+    $s = $adRow(['fuels' => [['name' => 'Eurodiesel', 'cat' => 'ed', 'price' => '1.60', 'prev' => '', 'changed_at' => ''],
+        ['name' => 'AdBlue', 'cat' => 'adblue', 'price' => '0.99', 'prev' => '1.05', 'changed_at' => '2026-10-23 00:00:00']]]);
+    $c = Render::card($s, '2026-10-24');
+    has('<li class="fuel fuel-adblue" data-cat="adblue"><span class="fuel-name">AdBlue</span></li>', $c);
+    has('data-fuels="ed adblue"', $c);
+    has('data-prices="{&quot;ed&quot;:1.6}"', $c);
+    eq(false, str_contains($c, '0,99'));
+    eq(false, str_contains(Render::priceOverview([$s]), 'AdBlue'));
+    $m = Stations::find((int) Db::one("SELECT id FROM stations WHERE name = 'Murter'")['id']);
+    Db::exec('UPDATE stations SET fuels = ? WHERE id = ?', [json_encode([['name' => 'AdBlue', 'cat' => 'adblue', 'price' => '0.99', 'prev' => '', 'changed_at' => '']]), $m['id']]);
+    $pub = array_column(Stations::publicRows(), null, 'name')['Murter'];
+    eq('', $pub['fuels'][0]['price']);
+});
+test('"moguće istakanje iz pištolja": shown next to AdBlue, adds AdBlue if ina.hr did not list it, own filter token', function () use ($adRow) {
+    $c = Render::card($adRow(['adblue_pump' => 1]), '2026-10-24');
+    has('<span class="fuel-name">AdBlue</span> <span class="fuel-note">moguće istakanje iz pištolja</span>', $c);
+    has('data-fuels="adblue adblue-pump"', $c);
+    eq(false, str_contains($c, 'Cijene s ina.hr')); // nothing priced on this card
+    // ina.hr lists AdBlue under services instead of fuels: still an (unpriced) AdBlue row, no pump token
+    [$fuels, $tokens] = Render::cardFuels($adRow(['services' => ['Caffe bar', 'AdBlue']]));
+    eq([['AdBlue'], [''], ['adblue']], [array_column($fuels, 'name'), array_column($fuels, 'price'), $tokens]);
+    eq([[], []], Render::cardFuels($adRow([])));
+});
+test('the flag is saved by the admin, kept by the sync, and gets its own filter option', function () use ($serve, $murterPage) {
+    $m = Stations::find((int) Db::one("SELECT id FROM stations WHERE name = 'Murter'")['id']);
+    Stations::save($m['id'], array_merge($m, ['adblue_pump' => 1]));
+    $serve(['https://www.ina.hr/station/murter/' => $murterPage()]);
+    InaSync::sync(null, 'Murter');
+    eq(1, Stations::find($m['id'])['adblue_pump']);
+    $html = (string) file_get_contents(Config::get('web_root') . '/index.html');
+    has('<option value="adblue">AdBlue (', $html);
+    has('<option value="adblue-pump">AdBlue – istakanje iz pištolja (1)</option>', $html);
+    eq(true, strpos($html, 'value="adblue"') < strpos($html, 'value="adblue-pump"'));
+});
+test('migrate() adds adblue_pump to a database created before it existed', function () {
+    $pdo = new PDO('sqlite::memory:');
+    $pdo->exec("CREATE TABLE stations (id INTEGER PRIMARY KEY, name TEXT)");
+    $cols = fn() => array_column($pdo->query('PRAGMA table_info(stations)')->fetchAll(PDO::FETCH_ASSOC), 'name');
+    eq(false, in_array('adblue_pump', $cols(), true));
+    $ref = new ReflectionProperty(Db::class, 'pdo');
+    $old = $ref->getValue();
+    $ref->setValue(null, $pdo);
+    try { Db::addColumnIfMissing('stations', 'adblue_pump', 'TINYINT(1) NOT NULL DEFAULT 0'); } finally { $ref->setValue(null, $old); }
+    eq(true, in_array('adblue_pump', $cols(), true));
 });
 
 echo "Import / export\n";

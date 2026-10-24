@@ -7,6 +7,11 @@ namespace InaPostaje;
 final class Render
 {
     public const NEW_PRICE_DAYS = 7;
+    /** Extra fuel-filter option: stations where AdBlue comes from a pump nozzle (admin flag). */
+    public const ADBLUE_PUMP = 'adblue-pump';
+    public const ADBLUE_PUMP_LABEL = 'AdBlue – istakanje iz pištolja';
+    public const ADBLUE_PUMP_NOTE = 'moguće istakanje iz pištolja';
+
     /** Services shown on a card before "+ još N". */
     private const SERVICES_SHOWN = 6;
 
@@ -47,7 +52,7 @@ final class Render
         $services = [];
         foreach ($rows as $s) {
             if ($s['county'] !== '') $counties[$s['county']] = ($counties[$s['county']] ?? 0) + 1;
-            foreach (array_unique(array_column($s['fuels'], 'cat')) as $cat) $fuelCats[$cat] = ($fuelCats[$cat] ?? 0) + 1;
+            foreach (self::cardFuels($s)[1] as $cat) $fuelCats[$cat] = ($fuelCats[$cat] ?? 0) + 1;
             foreach ($s['services'] as $sv) {
                 $key = mb_strtolower($sv);
                 $services[$key] ??= ['label' => $sv, 'n' => 0];
@@ -62,6 +67,9 @@ final class Render
         $fuelOptions = '';
         foreach (Fuels::CATEGORIES as $cat => $label) {
             if (isset($fuelCats[$cat])) $fuelOptions .= '<option value="' . $cat . '">' . self::e("$label ({$fuelCats[$cat]})") . "</option>\n";
+            if ($cat === 'adblue' && isset($fuelCats[self::ADBLUE_PUMP])) {
+                $fuelOptions .= '<option value="' . self::ADBLUE_PUMP . '">' . self::e(self::ADBLUE_PUMP_LABEL . ' (' . $fuelCats[self::ADBLUE_PUMP] . ')') . "</option>\n";
+            }
         }
         $serviceOptions = $options(array_map(fn($x) => "{$x['label']} ({$x['n']})", $services));
 
@@ -127,7 +135,7 @@ final class Render
         foreach ($rows as $s) {
             $seen = [];
             foreach ($s['fuels'] as $f) {
-                if (($f['price'] ?? '') === '') continue;
+                if (($f['price'] ?? '') === '' || !Fuels::priced($f['cat'])) continue;
                 // One price per station and type (the cheapest, if a station lists two of a kind).
                 if (isset($seen[$f['cat']]) && (float) $seen[$f['cat']]['price'] <= (float) $f['price']) continue;
                 $seen[$f['cat']] = $f;
@@ -190,23 +198,51 @@ final class Render
 
     // ---- card ----------------------------------------------------------
 
+    /**
+     * The fuels a card lists, and its filter tokens (data-fuels). AdBlue is listed without a price
+     * when ina.hr has it as a fuel or a service, or when the admin ticked "moguće istakanje iz
+     * pištolja" (seen only in the INA Loyalty app); that flag also adds the 'adblue-pump' token.
+     * @return array{0: array, 1: string[]}
+     */
+    public static function cardFuels(array $s): array
+    {
+        $fuels = [];
+        foreach ($s['fuels'] ?? [] as $f) {
+            if (!is_array($f) || ($f['name'] ?? '') === '') continue;
+            $f += ['cat' => Fuels::category($f['name']), 'price' => '', 'prev' => '', 'changed_at' => ''];
+            if (!Fuels::priced($f['cat'])) $f = ['price' => '', 'prev' => '', 'changed_at' => ''] + $f;
+            $fuels[] = $f;
+        }
+        $pump = !empty($s['adblue_pump']);
+        $listed = in_array('adblue', array_column($fuels, 'cat'), true);
+        $asService = (bool) preg_grep('/ad\s*blue/iu', $s['services'] ?? []);
+        if (!$listed && ($pump || $asService)) {
+            $fuels[] = ['name' => 'AdBlue', 'cat' => 'adblue', 'price' => '', 'prev' => '', 'changed_at' => ''];
+            Fuels::sort($fuels);
+        }
+        $tokens = array_values(array_unique(array_column($fuels, 'cat')));
+        if ($pump) $tokens[] = self::ADBLUE_PUMP;
+        return [$fuels, $tokens];
+    }
+
     public static function card(array $s, ?string $today = null): string
     {
         $today ??= date('Y-m-d');
         $status = $s['status'] ?? 'open';
         $state = Stations::closureState($s, $today);
-        $fuels = array_values(array_filter($s['fuels'], fn($f) => is_array($f) && ($f['name'] ?? '') !== ''));
+        [$fuels, $tokens] = self::cardFuels($s);
+        $pump = !empty($s['adblue_pump']);
         $cheapest = [];
         foreach ($fuels as $f) {
             if (($f['price'] ?? '') !== '' && (!isset($cheapest[$f['cat']]) || (float) $f['price'] < $cheapest[$f['cat']])) $cheapest[$f['cat']] = (float) $f['price'];
         }
         $search = implode(' ', [$s['name'], $s['city'], $s['postal_code'], $s['address'], $s['phone'], $s['aliases'], $s['county'],
             implode(' ', array_column($fuels, 'name')), implode(' ', array_map(fn($c) => Fuels::label($c), array_unique(array_column($fuels, 'cat')))),
-            implode(' ', $s['services']), $status === 'closed' ? 'privremeno zatvoreno ' . ($s['status_note'] ?? '') : '']);
+            implode(' ', $s['services']), $pump ? self::ADBLUE_PUMP_NOTE : '', $status === 'closed' ? 'privremeno zatvoreno ' . ($s['status_note'] ?? '') : '']);
         $place = trim($s['address'] . ', ' . trim($s['postal_code'] . ' ' . $s['city']), ', ');
 
         $h = '<article class="card' . ($state === 'closed' ? ' card-closed' : '') . '" data-county="' . self::e($s['county']) . '" data-search="' . self::e($search) . '"'
-            . ' data-fuels="' . self::e(implode(' ', array_unique(array_column($fuels, 'cat')))) . '"';
+            . ' data-fuels="' . self::e(implode(' ', $tokens)) . '"';
         if ($cheapest) $h .= ' data-prices="' . self::e(json_encode($cheapest)) . '"';
         if ($s['services']) $h .= ' data-services="' . self::e(implode('|', array_map('mb_strtolower', $s['services']))) . '"';
         if ($s['lat'] !== '' && $s['lng'] !== '') $h .= ' data-lat="' . self::e($s['lat']) . '" data-lng="' . self::e($s['lng']) . '"';
@@ -240,10 +276,11 @@ final class Render
                 $h .= '<li class="fuel fuel-' . self::e($f['cat']) . '" data-cat="' . self::e($f['cat']) . '"><span class="fuel-name">' . self::e($f['name']) . '</span>'
                     . (($f['price'] ?? '') !== '' ? ' <b class="fuel-price">' . self::e(self::euro($f['price'])) . '</b>' : '')
                     . ($isNew ? ' <span class="fuel-new">nova cijena, prije ' . self::e(self::euro($f['prev'])) . '</span>' : '')
+                    . ($f['cat'] === 'adblue' && $pump ? ' <span class="fuel-note">' . self::ADBLUE_PUMP_NOTE . '</span>' : '')
                     . '</li>';
             }
             $h .= '</ul>';
-            if (($s['ina_synced_at'] ?? '') !== '') $h .= '<p class="fuel-date">Cijene s ina.hr, ' . self::e(self::date(substr($s['ina_synced_at'], 0, 10))) . '</p>';
+            if ($cheapest && ($s['ina_synced_at'] ?? '') !== '') $h .= '<p class="fuel-date">Cijene s ina.hr, ' . self::e(self::date(substr($s['ina_synced_at'], 0, 10))) . '</p>';
             $h .= '</div>';
         }
 

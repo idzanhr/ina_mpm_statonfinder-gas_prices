@@ -32,6 +32,11 @@ A searchable list of **all INA petrol stations in Croatia**: working hours, whic
   Eurodiesel plavi, Eurodiesel Class Plus Expert (the list and order live in `Fuels::CATEGORIES`). Each shows
   the most common price on INA stations, the range and how many stations sell it. For a week after ina.hr changes a
   price it says **NOVA CIJENA od … – prije … (pojeftinjenje −0,04 €)**.
+* **AdBlue**: listed on every station that has it (from the ina.hr fuel or service list), **always without a
+  price**, and in the fuel filter. Whether AdBlue can be **dispensed from a pump nozzle** is not on ina.hr, only in the
+  INA Loyalty app (tap the station). The admin ticks **"Moguće istakanje AdBlue iz pištolja"** on the station. The card
+  then says *"moguće istakanje iz pištolja"*, and the filter gets **"AdBlue – istakanje iz pištolja"**. The sync never
+  changes this checkbox.
 * **Filters**: free text (place, name, address, phone, fuel, service, nickname), county, fuel type, service,
   *Sada rade* / *Bez privremeno zatvorenih*. **Order**: A–Ž, Ž–A, by county, **cheapest selected fuel**,
   **Najbliže meni** (browser geolocation; distance computed in the browser, the position is never sent anywhere).
@@ -59,6 +64,7 @@ A searchable list of **all INA petrol stations in Croatia**: working hours, whic
 3. The site is re-published after any change.
 
 **What you control in the editor** (never overwritten by the sync): nicknames, a public note on the card,
+*AdBlue iz pištolja*,
 temporary closures with dates, **Sakrij s javne stranice**, and **Zaključaj ručne izmjene** (the sync then keeps
 your name/address/phone/hours/services; fuels and prices still come from ina.hr). Prices cannot be entered by hand.
 Stations still listed on ina.hr can only be hidden, not deleted (the sync would add them back).
@@ -175,7 +181,7 @@ Origin check · strict CSP without inline scripts · audit log (**Dnevnik**) of 
 cp app/config.example.php app/config.php   # dsn: 'sqlite:' . __DIR__ . '/../var/ina-postaje.sqlite', app_key
 mkdir -p var && php bin/install.php        # add --no-sync without internet access
 php -S 127.0.0.1:8000 -t . bin/dev-router.php   # same whitelist as production; admin at /customer-gas-updater/
-php tests/run.php            # 37 tests: TOTP, crypto, ina.hr parsers, sync (add/flag/prices/closures/locks), rendering, import
+php tests/run.php            # 41 tests: TOTP, crypto, ina.hr parsers, sync (add/flag/prices/closures/locks), rendering, import
 node tests/hours.test.js     # 18 tests: "Sada radi" – formats, overnight, non-stop, holidays
 node tests/contrast.test.js  # 46 checks: WCAG AA contrast of every token pair, light + dark
 ```

@@ -31,7 +31,8 @@ final class Stations
     private const MAX = ['name' => 190, 'address' => 255, 'city' => 120, 'postal_code' => 16, 'county' => 120, 'phone' => 64,
         'lat' => 16, 'lng' => 16, 'aliases' => 2000, 'note' => 500, 'ina_url' => 255,
         'status' => 16, 'status_note' => 255, 'closed_from' => 10, 'closed_until' => 10];
-    public const FLAGS = ['hidden', 'locked'];
+    /** hidden = not published, locked = sync keeps manual edits, adblue_pump = AdBlue from a pump nozzle (INA Loyalty app). */
+    public const FLAGS = ['hidden', 'locked', 'adblue_pump'];
     public const STATUSES = ['open', 'closed'];
     private const HOURS_KEYS = ['label', 'week', 'sat', 'sun', 'hol'];
 
@@ -361,7 +362,9 @@ final class Stations
             'county' => $s['county'], 'phone' => $s['phone'], 'lat' => $s['lat'], 'lng' => $s['lng'],
             'aliases' => $s['aliases'], 'note' => $s['note'],
             'ina_url' => InaSource::safeUrl($s['ina_url']) ?? '', 'working_hours' => $s['working_hours'],
-            'fuels' => $s['fuels'], 'services' => $s['services'], 'ina_synced_at' => $s['ina_synced_at'],
+            // Unpriced products (AdBlue) are published without a price, whatever ina.hr says.
+            'fuels' => array_map(fn($f) => Fuels::priced($f['cat']) ? $f : ['price' => '', 'prev' => '', 'changed_at' => ''] + $f, $s['fuels']),
+            'adblue_pump' => $s['adblue_pump'], 'services' => $s['services'], 'ina_synced_at' => $s['ina_synced_at'],
             'status' => $s['status'], 'status_note' => $s['status_note'],
             'closed_from' => $s['closed_from'], 'closed_until' => $s['closed_until'],
         ], $rows));

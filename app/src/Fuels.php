@@ -6,7 +6,7 @@ namespace InaPostaje;
 /**
  * INA's fuel products. Each fuel name read from ina.hr ("Eurosuper 95 Class Plus", "Eurodiesel plavi" …)
  * is mapped to one of these, so the public site can filter, compare and sort by product.
- * Anything else a station lists (AdBlue, …) stays on its card under 'other'.
+ * AdBlue is listed (and filterable) but never priced. Anything else a station lists stays on its card under 'other'.
  */
 final class Fuels
 {
@@ -22,8 +22,12 @@ final class Fuels
         'lpg'      => 'Autoplin',
         'plavi'    => 'Eurodiesel plavi',
         'edcpe'    => 'Eurodiesel Class Plus Expert',
+        'adblue'   => 'AdBlue',
         'other'    => 'Ostalo',
     ];
+
+    /** Products shown without a price on the public site, even when ina.hr lists one. */
+    public const UNPRICED = ['adblue'];
 
     /**
      * Exact product name first (case and spacing ignored); otherwise the closest product by its parts,
@@ -36,6 +40,7 @@ final class Fuels
         foreach (self::CATEGORIES as $cat => $label) {
             if ($n === mb_strtolower($label, 'UTF-8')) return $cat;
         }
+        if (preg_match('/ad\s*blue/u', $n)) return 'adblue';
         if (preg_match('/plav/u', $n)) return 'plavi';
         if (preg_match('/autoplin|\bunp\b|\blpg\b/u', $n)) return 'lpg';
         $classPlus = (bool) preg_match('/class\s*plus/u', $n);
@@ -49,6 +54,11 @@ final class Fuels
             return $premium ? 'es95cpp' : ($classPlus ? 'es95cp' : 'es95');
         }
         return 'other';
+    }
+
+    public static function priced(string $cat): bool
+    {
+        return !in_array($cat, self::UNPRICED, true);
     }
 
     public static function label(string $cat): string

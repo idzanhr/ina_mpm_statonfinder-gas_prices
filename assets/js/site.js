@@ -137,6 +137,7 @@
     var cat = fuel ? fuel.value : "";
     sortNote = "";
     if (mode === "cijena" && !cat) sortNote = "za redoslijed po cijeni odaberite gorivo";
+    if (mode === "cijena" && /^adblue/.test(cat)) sortNote = "AdBlue se prikazuje bez cijene";
     var ordered = cards.slice().sort(function (a, b) {
       if (mode === "za") return collator.compare(b.name, a.name);
       if (mode === "zupanija") return collator.compare(a.county || "￿", b.county || "￿") || byName(a, b);
@@ -180,6 +181,7 @@
   function filter() {
     var n = norm(q.value.trim());
     var c = county.value, cat = fuel ? fuel.value : "", sv = service ? service.value : "", mode = show ? show.value : "";
+    var fuelCat = cat === "adblue-pump" ? "adblue" : cat; // the "iz pištolja" option highlights the AdBlue row
     var count = 0, unknown = 0;
     cards.forEach(function (card) {
       var match = (!c || card.county === c) && (!n || card.text.indexOf(n) !== -1)
@@ -188,7 +190,7 @@
       if (match && mode === "sada" && card.now === "unknown") unknown++;
       card.el.hidden = !ok;
       if (ok) count++;
-      Array.prototype.forEach.call(card.fuelItems, function (li) { li.classList.toggle("match", !!cat && li.getAttribute("data-cat") === cat); });
+      Array.prototype.forEach.call(card.fuelItems, function (li) { li.classList.toggle("match", !!fuelCat && li.getAttribute("data-cat") === fuelCat); });
     });
     shown.textContent = count;
     empty.hidden = count !== 0;

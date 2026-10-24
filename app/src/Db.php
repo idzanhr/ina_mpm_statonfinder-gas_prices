@@ -57,7 +57,11 @@ final class Db
 
     /** Columns added after the first release. Existing databases get them on the next migrate(). */
     private const UPGRADES = [
-        // 'stations' => ['new_column' => "VARCHAR(16) NOT NULL DEFAULT ''"],
+        'stations' => [
+            // AdBlue from a pump nozzle (not only canisters): set by the admin from the INA Loyalty app,
+            // ina.hr does not show it, so the sync never touches it.
+            'adblue_pump' => 'TINYINT(1) NOT NULL DEFAULT 0',
+        ],
     ];
 
     /** Runs sql/schema.<driver>.sql (CREATE TABLE IF NOT EXISTS, safe to re-run), then UPGRADES. */

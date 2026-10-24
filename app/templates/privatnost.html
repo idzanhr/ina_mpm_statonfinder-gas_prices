@@ -19,8 +19,9 @@
     <p class="muted small">Zadnje ažuriranje: listopad 2026.</p>
     <div class="legal">
       <section>
-        <h2>O stranici</h2>
-        <p>Ova stranica je pretraživi popis INA benzinskih postaja. Svi podaci o postajama (adrese, kontakti, radno vrijeme, goriva, cijene i usluge) preuzimaju se automatski sa službene stranice <a href="https://www.ina.hr/trazilica-benzinskih-postaja/" target="_blank" rel="noopener noreferrer">ina.hr</a>.</p>
+        <h2>Tko obrađuje podatke</h2>
+        <p>Ovu stranicu održava agent korisničke službe za potrebe rada i pregleda trenutno javnog popisa INA benzinskih postaja (adrese, kontakti, radno vrijeme, goriva, cijene i usluge), čije se informacije uvijek mogu potvrditi na web stranicama INA tvrtke (ina.hr). Sve informacije korištene na stranici prikupljene su sa službenih web stranica ina.hr (<a href="https://www.ina.hr/trazilica-benzinskih-postaja/" target="_blank" rel="noopener noreferrer">https://www.ina.hr/trazilica-benzinskih-postaja/</a>).</p>
+        <p>Iznimka je oznaka <strong>„moguće istakanje iz pištolja”</strong> uz AdBlue: taj podatak nije objavljen na ina.hr, nego ga administrator ručno upisuje nakon provjere postaje u aplikaciji INA Loyalty.</p>
       </section>
       <section>
         <h2>Koje podatke prikupljamo</h2>
@@ -29,7 +30,7 @@
           <li><strong>„Najbliže meni”:</strong> ako odaberete taj redoslijed, preglednik vas pita smije li stranica koristiti vašu lokaciju. Udaljenost do postaja izračunava se isključivo u vašem pregledniku; lokacija se nikamo ne šalje i ne pohranjuje.</li>
           <li><strong>Administrator (jedini ovlašteni korisnik):</strong> adresa e-pošte, sažetak lozinke (bcrypt) te šifrirani (AES-256-GCM) tajni ključ za obaveznu dvofaktorsku autentifikaciju i sažeci jednokratnih rezervnih kodova.</li>
           <li><strong>Sigurnosni zapisi prijave:</strong> IP adresa i vrijeme pokušaja prijave u administratorsko sučelje, radi zaštite od pogađanja lozinke. Čuvaju se najdulje 30 dana.</li>
-          <li><strong>Tehnički zapisi poslužitelja:</strong> standardni zapisi pristupa (IP adresa, vrijeme, preglednik) koje vodi pružatelj hostinga radi sigurnosti i rada sustava.</li>
+          <li><strong>Tehnički zapisi poslužitelja:</strong> standardni zapisi pristupa (IP adresa, vrijeme, preglednik) koje vode pružatelji hostinga i CDN usluge (vidi niže) radi sigurnosti i rada sustava. Zapisi se čuvaju najdulje 30 dana, nakon čega se automatski brišu.</li>
         </ul>
       </section>
       <section>
@@ -37,8 +38,18 @@
         <p>Podaci administratora obrađuju se radi prijave i održavanja popisa, a tehnički i sigurnosni zapisi radi sigurnosti sustava (legitimni interes, čl. 6. st. 1. t. f GDPR-a).</p>
       </section>
       <section>
-        <h2>Vanjske poveznice</h2>
-        <p>Poveznica <strong>„Karta ↗”</strong> uz svaku postaju otvara Google Karte (Google Ireland Ltd.) u novoj kartici, a <strong>„INA.hr ↗”</strong> stranicu postaje na ina.hr. Stranica sama ne učitava karte ni skripte trećih strana; podaci se tim servisima prenose tek kada kliknete poveznicu.</p>
+        <h2>Tko unosi promjene</h2>
+        <p>Podaci o postajama preuzimaju se automatski sa službenih web stranica ina.hr. Ručne izmjene (nadimci postaja, napomene, privremena zatvaranja i oznaka istakanja AdBlue iz pištolja) unosi isključivo administrator stranice, koji ima jedini račun s pravima uređivanja. Kolege iz kontakt centra nemaju račune niti pristup uređivanju; promjene nadimaka postaja upisuju se na temelju dojava zaprimljenih putem zajednički podijeljenih podataka ili podataka pronađenih pretragom na Internetu, ukoliko se isti ne nalaze u bazi. Cijene goriva nije moguće ručno mijenjati – prikazuju se isključivo cijene objavljene na ina.hr.</p>
+      </section>
+      <section>
+        <h2>Tko ima pristup podacima</h2>
+        <p>Podacima administratora ima pristup samo administrator stranice. Obrada se obavlja uz pomoć sljedećih pružatelja usluga, koji podatke obrađuju isključivo po našim uputama:</p>
+        <ul>
+          <li><strong>Hetzner Online GmbH</strong> (<a href="https://www.hetzner.com" target="_blank" rel="noopener noreferrer">hetzner.com</a>) – VPS poslužitelj na kojem se nalaze stranica i baza podataka (PHP i MySQL); podatkovni centar u Njemačkoj (EU).</li>
+          <li><strong>BunnyWay d.o.o. – Bunny.net</strong> (<a href="https://bunny.net" target="_blank" rel="noopener noreferrer">bunny.net</a>) – CDN i DNS usluge te zaštita stranice; tvrtka sa sjedištem u Sloveniji (EU). Promet prema stranici prolazi kroz njihovu mrežu, pa obrađuju IP adresu i tehničke podatke zahtjeva. Sadržaj se posjetitelju isporučuje s najbližeg poslužitelja te mreže.</li>
+        </ul>
+        <p>Oba pružatelja imaju sjedište u Europskoj uniji i ne koriste podatke u vlastite marketinške svrhe. Podatke ne prodajemo niti dijelimo s trećim stranama u marketinške svrhe.</p>
+        <p>Poveznica <strong>„Karta ↗”</strong> uz svaku postaju otvara Google Karte (Google Ireland Ltd.) u novoj kartici, a <strong>„INA.hr ↗”</strong> stranicu postaje na ina.hr. Stranica sama ne učitava kartu, Googleove skripte niti skripte trećih strana; podaci se tim servisima prenose tek kada kliknete poveznicu, prema njihovim pravilima o privatnosti (<a href="https://policies.google.com/privacy?hl=hr" target="_blank" rel="noopener noreferrer">Googleova pravila o privatnosti</a>).</p>
       </section>
       <section>
         <h2>Vaša prava</h2>

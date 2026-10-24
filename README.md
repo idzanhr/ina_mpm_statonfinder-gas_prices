@@ -177,3 +177,9 @@ php tests/run.php            # 37 tests: TOTP, crypto, ina.hr parsers, sync (add
 node tests/hours.test.js     # 18 tests: "Sada radi" – formats, overnight, non-stop, holidays
 node tests/contrast.test.js  # 46 checks: WCAG AA contrast of every token pair, light + dark
 ```
+
+## Contributors
+
+* [idzanhr](https://github.com/idzanhr) – owner, product direction, design (plava-nafta.crodesign93.eu)
+* Claude (Anthropic), via [Claude Code](https://claude.com/claude-code) – AI pair programmer: wrote the code,
+  tests and docs with the owner; listed as `Co-Authored-By` on its commits

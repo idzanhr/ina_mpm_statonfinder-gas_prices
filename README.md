@@ -122,7 +122,8 @@ Do these once, in this order (setting names as in the Bunny dashboard):
    * *Origin URL*: `https://<server IP>` (the IP, not the domain, which would loop back through Bunny).
    * *Forward Host Header*: **ON**. nginx only answers for `lokator-benzinskih.crodesign93.eu`.
    * *Hostnames*: add `lokator-benzinskih.crodesign93.eu` and enable its free SSL certificate.
-4. **Edge rule "Origin secret"**: condition *Request URL* matches `*`. Action *Set Request Header*, name
+4. **Edge rule "Origin secret"**: condition *Request URL* matches `*`. Action **Add Request Header** (the one marked
+   *Origin*; *Set Response Header* would send it to the visitor instead and the server would answer 403), name
    `X-Inapostaje-Origin`, value = the secret from step 1.
 5. **Edge rule "Admin – never cache"**: condition *Request URL* matches `*/customer-gas-updater*`. Action *Bypass
    Cache* (or *Override Cache Time* `0` + *Override Browser Cache Time* `0`).
@@ -132,7 +133,8 @@ Do these once, in this order (setting names as in the Bunny dashboard):
    * *Disable Cookies*: **OFF**. Otherwise the admin session cookie is stripped and login loops.
    * *Optimizer* and *Perma-Cache*: **OFF**. The Optimizer rewrites HTML/JS, which the strict CSP blocks.
 7. **Vhost**: CloudPanel → Site → **Vhost**: paste the file, replace `CHANGE-ME-BUNNY-SECRET` with the secret from
-   step 1, save. Never leave the placeholder: it is public in this repo.
+   step 1 and keep the regex around it: `"~^<your secret>$" 1;`. Then save. The regex form matters, because a long plain key
+   fails with "could not build map_hash". Never leave the placeholder: it is public in this repo.
 8. **DNS**: point `lokator-benzinskih` (CNAME) to the pull zone's `*.b-cdn.net` hostname.
 9. **Check**:
    ```

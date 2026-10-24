@@ -87,11 +87,9 @@ Stations still listed on ina.hr can only be hidden, not deleted (the sync would 
    php bin/install.php                                        # tables, admin, station list from ina.hr, public pages
    php bin/sync-ina.php --all                                 # hours, fuels, prices, services (several minutes)
    ```
-3. **Vhost**: paste [`deploy/nginx-vhost.conf`](deploy/nginx-vhost.conf) (replace `postaje.example.hr`). It is a
-   **whitelist**: only the generated pages, `data/stations.json`, assets, icons and the two admin PHP files are
-   served; `app/`, `sql/`, `bin/`, `var/`, `.git`, backups… are all 404. Pages are `no-cache` + ETag, CSS/JS
-   are content-hashed and cached for a year, `.gz` copies are served by `gzip_static`.
-4. Open `https://<domain>/customer-gas-updater/`, log in, scan the QR code, save the 8 recovery codes.
+3. **Bunny CDN + vhost**: follow [Bunny CDN](#bunny-cdn) below. The vhost is locked to Bunny, so the site only
+   answers once Bunny sends its secret header.
+4. Open `https://lokator-benzinskih.crodesign93.eu/customer-gas-updater/`, log in, scan the QR code, save the 8 recovery codes.
 5. **Cron** (`php` = the site's PHP version):
    ```
    * 0,4 * * *  php /path/to/bin/sync-ina.php     # each minute of 00:xx and 04:xx: 1/60 of the stations → two full rounds a day
@@ -101,9 +99,56 @@ Stations still listed on ina.hr can only be hidden, not deleted (the sync would 
 
 **Updating later:** `git pull && php bin/upgrade.php`. Generated files are git-ignored, so pulls never conflict.
 
-**Behind Bunny CDN?** Same as the previous project: "Respect Origin Cache-Control", don't strip cookies, an edge
-rule that never caches `/customer-gas-updater*`, optionally the origin-lock block in the vhost, and the `bunny` API key in
-`app/config.php` for an automatic purge after every publish (`php bin/bunny-purge.php` by hand).
+## Bunny CDN
+
+Visitors → Bunny → this server. [`deploy/nginx-vhost.conf`](deploy/nginx-vhost.conf) is already set up for that
+(domain `lokator-benzinskih.crodesign93.eu`):
+
+* **Origin lock.** Every request must carry the header `X-Inapostaje-Origin: <secret>`, which only Bunny adds.
+  Anything else (someone calling the server's IP directly) gets **403**. Let's Encrypt renewals
+  (`/.well-known/acme-challenge/`) are the only exception.
+* **Real visitor IPs.** nginx takes the visitor's address from the *last* `X-Forwarded-For` entry, the one Bunny
+  adds. The admin lockout, the POST rate limit and the **Dnevnik** therefore see real people, not Bunny servers.
+  This is safe only because of the lock above. Keep `'trust_proxy' => false` in `app/config.php`.
+* **Caching.** Pages and `data/stations.json` are `no-cache` (Bunny revalidates, a cheap 304). CSS/JS have a content
+  hash in the URL (`site.css?v=…`) and are cached for a year. The admin is `no-store`.
+
+Do these once, in this order (setting names as in the Bunny dashboard):
+
+1. **Secret**: on the server run `openssl rand -hex 24` and keep the value.
+2. **Origin certificate first**: in CloudPanel install the Let's Encrypt certificate for
+   `lokator-benzinskih.crodesign93.eu` *before* DNS points to Bunny. Renewals keep working through Bunny later.
+3. **Pull zone → General**
+   * *Origin URL*: `https://<server IP>` (the IP, not the domain, which would loop back through Bunny).
+   * *Forward Host Header*: **ON**. nginx only answers for `lokator-benzinskih.crodesign93.eu`.
+   * *Hostnames*: add `lokator-benzinskih.crodesign93.eu` and enable its free SSL certificate.
+4. **Edge rule "Origin secret"**: condition *Request URL* matches `*`. Action *Set Request Header*, name
+   `X-Inapostaje-Origin`, value = the secret from step 1.
+5. **Edge rule "Admin – never cache"**: condition *Request URL* matches `*/customer-gas-updater*`. Action *Bypass
+   Cache* (or *Override Cache Time* `0` + *Override Browser Cache Time* `0`).
+6. **Caching**
+   * *Cache Expiration Time*: **Respect Origin Cache-Control**. *Browser Cache Expiration Time*: **Match Server**.
+   * *Query String*: **not** ignored / *Vary by query string* **on**. Otherwise a new `site.css?v=…` is served stale.
+   * *Disable Cookies*: **OFF**. Otherwise the admin session cookie is stripped and login loops.
+   * *Optimizer* and *Perma-Cache*: **OFF**. The Optimizer rewrites HTML/JS, which the strict CSP blocks.
+7. **Vhost**: CloudPanel → Site → **Vhost**: paste the file, replace `CHANGE-ME-BUNNY-SECRET` with the secret from
+   step 1, save. Never leave the placeholder: it is public in this repo.
+8. **DNS**: point `lokator-benzinskih` (CNAME) to the pull zone's `*.b-cdn.net` hostname.
+9. **Check**:
+   ```
+   curl -skI https://127.0.0.1/ -H 'Host: lokator-benzinskih.crodesign93.eu' | head -1             # on the server → 403
+   curl -skI https://127.0.0.1/ -H 'Host: lokator-benzinskih.crodesign93.eu' \
+        -H 'X-Inapostaje-Origin: CHANGE-ME-BUNNY-SECRET' | head -1                                  # → 403 (placeholder replaced)
+   curl -sI https://lokator-benzinskih.crodesign93.eu/ | grep -iE '^HTTP|cache-control'              # → 200, no-cache
+   ```
+   Log in to the admin and save something. **Dnevnik** must show *your* IP, not a Bunny one.
+10. **Automatic purge** (recommended): Bunny → *Account* → *API* → API key, then in `app/config.php`:
+    `'bunny' => ['api_key' => '…', 'pullzone_id' => '<number from the pull zone URL>', 'site_url' => 'https://lokator-benzinskih.crodesign93.eu']`.
+    Every save, sync and `bin/publish.php` then clears Bunny's copy. A failed purge never blocks a save; it is logged
+    in the Dnevnik. By hand: `php bin/bunny-purge.php` (`--zone` for the whole pull zone).
+
+**Emergency** (Bunny down, the site must be reachable directly): in the vhost, put `#` in front of the five lines
+under `# --- BUNNY CDN` (the `if` and the four `real_ip` lines) and save. Remove the `#` again afterwards.
 
 ## Admin security
 
